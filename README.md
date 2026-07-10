@@ -22,7 +22,12 @@
 ### 安装engineai_rl_lab
 1. 从github克隆engineai_rl_lab
 ```bash
+# 1. 克隆仓库
 git clone https://github.com/engineai-robotics/engineai_rl_lab.git
+# 2.下载大型资产
+cd engineai_rl_lab
+git lfs install
+git lfs pull
 ```
 2. 安装engineai_rl_lab
 ```bash

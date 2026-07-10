@@ -74,14 +74,25 @@ tests/
 **/gelsight_r15_data/*
 
 mydocs
-source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion
 scripts/amp
 datasets/amp
 logs/rsl_rl/amp_velocity_flat_pm01
 source/engineai_rl_lab/engineai_rl_lab/assets/pm01_23dof_simplified
 datasets/mytracking
-scripts/test
+scripts/tool
 
 # logs/rsl_rl
 outputs
 logs/rsl_rl/backup
+backup
+
+
+# 临时
+# source/engineai_rl_lab/engineai_rl_lab/assets
+source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration
+source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion
+logs
+source/engineai_rl_lab/engineai_rl_lab/assets/t800
+source/engineai_rl_lab/engineai_rl_lab/assets/pm01
+source/engineai_rl_lab/engineai_rl_lab/assets/pm01_23dof_simplified
+

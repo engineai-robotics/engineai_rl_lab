@@ -22,7 +22,11 @@ This repository is developed based on Isaac Lab 2.3.2, commit `c22775241e28f465f
 ### Install engineai_rl_lab
 1. Clone engineai_rl_lab from GitHub:
 ```bash
+# 1.Clone the Repository
 git clone https://github.com/engineai-robotics/engineai_rl_lab.git
+# 2. Pull Git LFS Assets
+git lfs install
+git lfs pull
 ```
 
 2. Install engineai_rl_lab:
