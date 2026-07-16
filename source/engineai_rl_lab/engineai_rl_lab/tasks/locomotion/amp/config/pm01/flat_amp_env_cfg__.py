@@ -118,6 +118,7 @@ class PM01Rewards:
         weight=2.0,
         params={"command_name": "base_velocity", "sigma": 4.0},
     )
+    alive = RewTerm(func=mdp.is_alive, weight=0.2)
 
     # -- penalties
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
@@ -126,14 +127,6 @@ class PM01Rewards:
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-2.0e-6)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
-    action_smoothness = RewTerm(
-            func=mdp.action_smoothness_with_curriculum,
-            weight=-0.04,
-            params={"start_scale": 0.1,
-                    "power": 0.8,
-                    "interval_epochs": 200*24
-                    },
-        )
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
@@ -144,6 +137,7 @@ class PM01Rewards:
             )
         },
     )
+
     joint_deviation_hip = RewTerm(
         func=mdp.stand_still_joint_deviation_l1,
         weight=-0.1,
@@ -186,6 +180,39 @@ class PM01Rewards:
             "threshold": 0.25,
         },
     )
+    feet_contact = RewTerm(
+        func=mdp.feet_contact_fixed,
+        weight=0.25,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"],
+            ),
+            "stand_threshold": 0.1,
+            "force_threshold": 5.0,
+        },
+    )
+    # feet_clearance = RewTerm(
+    #     func=mdp.feet_clearance,
+    #     weight=0.75,
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "asset_cfg": SceneEntityCfg(
+    #             "robot",
+    #             body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"],
+    #         ),
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"],
+    #         ),
+    #         "target_clearance": 0.08,
+    #         "ankle_height": 0.045,
+    #         "std": 0.03,
+    #         "command_threshold": 0.1,
+    #         "force_threshold": 5.0,
+    #     },
+    # )
     feet_slide = RewTerm(
         func=mdp.feet_slide,
         weight=-0.1,
@@ -201,7 +228,205 @@ class PM01Rewards:
         },
     )
 
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-100.0)
+
+# @configclass
+# class PM01Rewards:
+#     """Reward terms for the MDP."""
+#     track_lin_vel_xy_exp = RewTerm(
+#         func=mdp.track_lin_vel_xy_yaw_frame_exp,
+#         weight=2.0,
+#         params={"command_name": "base_velocity", "sigma": 5},
+#     )
+#     track_ang_vel_z_exp = RewTerm(
+#         func=mdp.track_ang_vel_z_world_exp, 
+#         weight=2.5, 
+#         params={"command_name": "base_velocity", "sigma": 5}
+#     )
+
+#     base_orientation = RewTerm(
+#         func=mdp.base_orientation,
+#         weight=1.0
+#     )
+
+#     base_height = RewTerm(
+#         func=mdp.base_height_tracking,
+#         weight=0.4,
+#         params={"target_height": 0.82}
+#     )
+    
+#     foot_position = RewTerm(
+#         func=mdp.feet_position,
+#         weight=0.5,
+#         params={
+#             "asset_cfg": SceneEntityCfg("robot", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "command_name": "base_velocity",
+#             "stand_threshold": 0.1,
+#             "ankle_distance": 0.22,
+#             "base_height_target": 0.82,
+#         },
+#     )
+    
+#     feet_orientation = RewTerm(
+#         func=mdp.feet_orientation,
+#         weight=0.25,
+#         params={
+#             "asset_cfg": SceneEntityCfg("robot", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "command_name": "base_velocity",
+#             "stand_threshold": 0.1,
+#         },
+#     )
+    
+#     waist_pos = RewTerm(
+#         func=mdp.joint_deviation_exp,
+#         weight=0.3,
+#         params={
+#             "asset_cfg":  SceneEntityCfg("robot", joint_names=["J12_WAIST_YAW"]),
+#             "scale": 3.0,
+#             "tolerance": 0.0
+#         },
+#     )
+    
+#     leg_joint_position = RewTerm(
+#         func=mdp.joint_deviation_exp,
+#         weight=0.3,
+#         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_HIP_ROLL_.*", ".*_HIP_YAW_.*", ".*_ANKLE_ROLL_.*"]),
+#                 "scale": 3.0},
+#     )
+    
+#     arm_pitch_position = RewTerm(
+#         func=mdp.joint_deviation_exp,
+#         weight=0.3,
+#         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*SHOULDER_PITCH.*", ".*ELBOW_PITCH.*"]),
+#                 "scale": 3.0},
+#     )
+    
+#     arm_roll_position = RewTerm(
+#         func=mdp.joint_deviation_exp,
+#         weight=0.3,
+#         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*SHOULDER_ROLL.*"]),
+#                 "scale": 3.0},
+#     )
+    
+#     arm_yaw_position = RewTerm(
+#         func=mdp.joint_deviation_exp,
+#         weight=0.3,
+#         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*SHOULDER_YAW.*", ".*ELBOW_YAW.*"]),
+#                 "scale": 10.0},
+#     )
+    
+#     feet_contact = RewTerm(
+#         func=mdp.feet_contact_fixed,
+#         weight=0.25,
+#         params={
+#             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "command_name": "base_velocity",
+#             "stand_threshold": 0.1,
+#             "force_threshold": 5.0,
+#         },
+#     )
+
+#     feet_air_time = RewTerm(
+#         func=mdp.feet_air_time,
+#         weight=10.0,
+#         params={
+#             "command_name": "base_velocity",
+#             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "threshold": 0.5,
+#         },
+#     )
+    
+#     feet_air_time_dense = RewTerm(
+#         func=mdp.feet_air_time_positive_biped,
+#         weight=1.25,
+#         params={
+#             "command_name": "base_velocity",
+#             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "threshold": 0.5,
+#         },        
+#     )
+
+#     feet_clearance_turning = RewTerm(
+#         func=mdp.feet_clearance_turning,
+#         weight=2.0,
+#         params={
+#             "asset_cfg": SceneEntityCfg("robot", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "command_name": "base_velocity",
+#             "stand_threshold": 0.1,
+#             "yaw_threshold": 0.2,
+#             "target_clearance": 0.14,
+#         },
+#     )
+
+#     foot_stumble = RewTerm(
+#         func=mdp.feet_stumble,
+#         weight=-1.0,
+#         params={
+#             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "tangential_threshold": 2.0,
+#             "normal_threshold": 1.0,
+#         },
+#     )
+    
+#     dof_pos_limits = RewTerm(
+#         func=mdp.joint_pos_limits, weight=-10.0, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")}
+#     )
+    
+#     energy_cost = RewTerm(
+#         func=mdp.energy_cost_with_curriculum,
+#         weight=-0.004,
+#         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]),
+#                 "start_scale": 0.1,
+#                 "power": 0.8,
+#                 "interval_epochs": 200*24,
+#                 },
+#     )
+
+#     feet_slide = RewTerm(
+#         func=mdp.feet_slide,
+#         weight=-0.25,
+#         params={
+#             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#             "asset_cfg": SceneEntityCfg("robot", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+#         },
+#     )
+
+#     dof_vel = RewTerm(
+#         func=mdp.joint_vel_l2,
+#         weight=-1.0e-5,
+#         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+#     )
+#     dof_acc = RewTerm(
+#         func=mdp.joint_acc_l2,
+#         weight=-1.25e-8,
+#         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+#     )
+#     action_rate = RewTerm(
+#         func=mdp.action_rate_with_curriculum,
+#         weight=-0.06,
+#         params={"start_scale": 0.1,
+#                 "power": 0.8,
+#                 "interval_epochs": 200*24
+#                 },
+#     )
+
+#     action_smoothness = RewTerm(
+#         func=mdp.action_smoothness_with_curriculum,
+#         weight=-0.04,
+#         params={"start_scale": 0.1,
+#                 "power": 0.8,
+#                 "interval_epochs": 200*24
+#                 },
+#     )
+    
+#     dof_torque = RewTerm(
+#         func=mdp.joint_torques_l2,
+#         weight=-1.0e-6,
+#         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
+#     )
+#     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
+
 
 @configclass
 class PM01Termination:
@@ -344,8 +569,8 @@ class PM01Commands:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0, 0.8),
-            lin_vel_y=(0,0),
+            lin_vel_x=(0, 1.0),
+            lin_vel_y=(0, 0),
             ang_vel_z=(-1.0, 1.0),
             heading=(-3.14, 3.14),
         ),
@@ -449,24 +674,29 @@ class PM01AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = 0.005
-
-        self.commands.base_velocity.ranges.lin_vel_x = (0,0.7)
-        self.commands.base_velocity.ranges.lin_vel_y = (0,0)
-
-        # reward weights
-        self.rewards.track_lin_vel_xy_exp.weight = 2.0 #2.0 3.0
-        self.rewards.track_ang_vel_z_exp.weight = 1.5   #2.0 2.5
-        self.rewards.flat_orientation_l2.weight = -1.0
-        self.rewards.lin_vel_z_l2.weight = -0.8
-        self.rewards.ang_vel_xy_l2.weight = -0.05
-        self.rewards.dof_torques_l2.weight = -2e-6
-        self.rewards.dof_acc_l2.weight = -2e-8
-        self.rewards.action_rate_l2.weight = -0.01
-        self.rewards.action_smoothness.weight = -0.01
-        self.rewards.dof_pos_limits.weight = -0.1   #-1.0
-        self.rewards.joint_deviation_hip.weight = -0.1
-        self.rewards.joint_deviation_arms.weight = -0.1 #-0.05
-        self.rewards.joint_deviation_waist.weight = -10 #-0.5 -1.0
-        self.rewards.feet_air_time.weight = 0.75
-        self.rewards.feet_slide.weight = -0.1
-        self.rewards.termination_penalty.weight = -50.0
+        
+        # self.rewards.track_lin_vel_xy_exp.weight = 2.0
+        # self.rewards.track_ang_vel_z_exp.weight = 2.0
+        # self.rewards.base_orientation.weight = 1.0
+        # self.rewards.base_height.weight = 0.4
+        # self.rewards.foot_position.weight = 0.5
+        # self.rewards.feet_orientation.weight = 0.25
+        # self.rewards.waist_pos.weight = 0.3
+        # self.rewards.leg_joint_position.weight = 0.3
+        # self.rewards.arm_pitch_position.weight = 0.1 #0.3
+        # self.rewards.arm_roll_position.weight = 0.1 #0.3
+        # self.rewards.arm_yaw_position.weight = 0.1 #0.3
+        # self.rewards.feet_contact.weight = 0.25
+        # self.rewards.feet_air_time.weight = 10.0    #8.0
+        # self.rewards.feet_air_time_dense.weight = 3.0   #2.0
+        # self.rewards.feet_clearance_turning.weight = 2.0
+        # self.rewards.foot_stumble.weight = -1.0
+        # self.rewards.dof_pos_limits.weight = -1.0 #-10.0
+        # self.rewards.energy_cost.weight = -0.001
+        # self.rewards.feet_slide.weight = -0.5    #-0.3 1.0
+        # self.rewards.dof_vel.weight = -1.0e-6   #-1.0e-5
+        # self.rewards.dof_acc.weight = -1.25e-9  #-1.25e-8
+        # self.rewards.action_rate.weight = -0.03
+        # self.rewards.action_smoothness.weight = -0.06
+        # self.rewards.dof_torque.weight = -1.0e-7 #-1.0e-6
+        # self.rewards.termination_penalty.weight = -200.0

@@ -1,7 +1,40 @@
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
+
+# AMP motion joints for T800 (leg + torso + arm), excluding the head joints so the
+# action/observation/AMP feature layout matches the 23-joint motion data.
+T800_DFS_JOINT_NAMES = [
+    "J00_HIP_PITCH_L",
+    "J01_HIP_ROLL_L",
+    "J02_HIP_YAW_L",
+    "J03_KNEE_PITCH_L",
+    "J04_ANKLE_PITCH_L",
+    "J05_ANKLE_ROLL_L",
+    "J06_HIP_PITCH_R",
+    "J07_HIP_ROLL_R",
+    "J08_HIP_YAW_R",
+    "J09_KNEE_PITCH_R",
+    "J10_ANKLE_PITCH_R",
+    "J11_ANKLE_ROLL_R",
+    "J12_TORSO_YAW",
+    "J13_SHOULDER_PITCH_L",
+    "J14_SHOULDER_ROLL_L",
+    "J15_SHOULDER_YAW_L",
+    "J16_ELBOW_PITCH_L",
+    "J17_ELBOW_YAW_L",
+    "J18_SHOULDER_PITCH_R",
+    "J19_SHOULDER_ROLL_R",
+    "J20_SHOULDER_YAW_R",
+    "J21_ELBOW_PITCH_R",
+    "J22_ELBOW_YAW_R",
+]
+
+T800_DFS_JOINT_ORDER_ASSET_CFG = SceneEntityCfg(
+    "robot", joint_names=T800_DFS_JOINT_NAMES, preserve_order=True
+)
 
 # T800 motor/inertia parameters aligned with the original T800 setup.
 ARMATURE_Q300H_L = 0.2427264
@@ -76,7 +109,7 @@ class UnitreeUsdFileCfg(sim_utils.UsdFileCfg):
 
 T800_CFG = UnitreeArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path="source/engineai_lab/assets/serial_t800/serial_t800.usd",
+        usd_path="source/engineai_rl_lab/engineai_rl_lab/assets/t800/serial_t800.usd",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -92,7 +125,7 @@ T800_CFG = UnitreeArticulationCfg(
         ),        
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.8),
+        pos=(0.0, 0.0, 1.06),
         joint_pos={
             "J00_HIP_PITCH_L": DEFAULT_Q_HIP_PITCH,
             "J01_HIP_ROLL_L": DEFAULT_Q_HIP_ROLL,

@@ -1,10 +1,10 @@
 from isaaclab.utils import configclass
 
-from .rsl_rl_ppo_cfg import PM01BasePPORunnerCfg
+from .rsl_rl_ppo_cfg import T800BasePPORunnerCfg
 
 
 @configclass
-class PM01FlatAMPPPORunnerCfg(PM01BasePPORunnerCfg):
+class T800FlatAMPPPORunnerCfg(T800BasePPORunnerCfg):
     max_iterations: int = 20000
     save_interval: int = 2000
     # AMP parameters
@@ -16,15 +16,15 @@ class PM01FlatAMPPPORunnerCfg(PM01BasePPORunnerCfg):
     frame_dim = 26
     frame_normalization = True
     discriminator_hidden_dims = [512, 256, 128]
-    experiment_name = "amp_velocity_flat_pm01"
-    dataset_path = "datasets/amp/pm01/config/dataset.yaml"
+    experiment_name = "amp_velocity_flat_t800"
+    dataset_path = "datasets/amp/t800/config/dataset.yaml"
 
     def __post_init__(self):
         super().__post_init__()
         self.algorithm.class_name = "engineai_rl_lab.tasks.locomotion.amp.algorithms.amp_ppo:AMPPPO"
 
 @configclass
-class PM01FlatAMPPPORunnerCfg_V1(PM01BasePPORunnerCfg):
+class T800FlatAMPPPORunnerCfg_V1(T800BasePPORunnerCfg):
     max_iterations: int = 20000
     save_interval: int = 2000
     # AMP parameters
@@ -33,8 +33,8 @@ class PM01FlatAMPPPORunnerCfg_V1(PM01BasePPORunnerCfg):
     frame_dim = 26
     frame_normalization = True
     discriminator_hidden_dims = [512, 256, 128]
-    experiment_name = "amp_velocity_flat_pm01"
-    dataset_path = "datasets/amp/pm01/config/dataset.yaml"
+    experiment_name = "amp_velocity_flat_t800"
+    dataset_path = "datasets/amp/t800/config/dataset.yaml"
 
     def __post_init__(self):
         super().__post_init__()

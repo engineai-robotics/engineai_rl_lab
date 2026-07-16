@@ -132,6 +132,43 @@ def feet_clearance_turning(
     return reward * (turning_in_place & single_support)
 
 
+def feet_clearance(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    sensor_cfg: SceneEntityCfg,
+    command_name: str,
+    target_clearance: float = 0.10,
+    ankle_height: float = 0.045,
+    std: float = 0.04,
+    command_threshold: float = 0.1,
+    force_threshold: float = 5.0,
+) -> torch.Tensor:
+    """Reward the airborne foot for reaching a target clearance on flat terrain.
+
+    The reward is active only for non-zero motion commands and single-support
+    states. This encourages a lifted swing foot without rewarding two-foot jumps.
+    """
+    commands = env.command_manager.get_command(command_name)
+    moving = (torch.norm(commands[:, :2], dim=1) > command_threshold) | (
+        torch.abs(commands[:, 2]) > command_threshold
+    )
+
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contacts = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, 2] > force_threshold
+    single_support = torch.sum(contacts, dim=1) == 1
+    airborne = ~contacts
+
+    asset = env.scene[asset_cfg.name]
+    foot_clearance = torch.clamp(
+        asset.data.body_pos_w[:, asset_cfg.body_ids, 2] - ankle_height,
+        min=0.0,
+    )
+    clearance_error = foot_clearance - target_clearance
+    foot_reward = torch.exp(-0.5 * torch.square(clearance_error / std)) * airborne.float()
+    reward = torch.sum(foot_reward, dim=1)
+    return reward * moving * single_support
+
+
 def track_lin_vel_xy_yaw_frame_exp(
     env, sigma: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"), stand_threshold: float = 0.06
 ) -> torch.Tensor:

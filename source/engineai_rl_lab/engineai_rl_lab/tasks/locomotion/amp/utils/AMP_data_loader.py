@@ -55,6 +55,29 @@ def _load_motion_list_from_yaml(yaml_path: Path) -> list[str]:
             paths.extend(str(file_path) for file_path in npz_files)
     return paths
 
+
+def _load_joint_arrays(data: np.lib.npyio.NpzFile) -> tuple[np.ndarray, np.ndarray, list[str] | None]:
+    """Load joint state arrays, dropping head joints when joint names are available."""
+    joint_pos = data["joint_pos"]
+    joint_vel = data["joint_vel"]
+    if "joint_names" not in data:
+        return joint_pos, joint_vel, None
+
+    joint_names = [str(name) for name in data["joint_names"].tolist()]
+    keep_indices = [idx for idx, name in enumerate(joint_names) if "HEAD" not in name]
+    filtered_names = [joint_names[idx] for idx in keep_indices]
+    if len(keep_indices) != len(joint_names):
+        joint_pos = joint_pos[:, keep_indices]
+        joint_vel = joint_vel[:, keep_indices]
+    waist_indices = [idx for idx, name in enumerate(filtered_names) if "WAIST_YAW" in name]
+    if waist_indices:
+        joint_pos = joint_pos.copy()
+        joint_vel = joint_vel.copy()
+        joint_pos[:, waist_indices] = 0.0
+        joint_vel[:, waist_indices] = 0.0
+    return joint_pos, joint_vel, filtered_names
+
+
 class AMPDataLoader:
     def __init__(
         self,
@@ -99,13 +122,20 @@ class AMPDataLoader:
         body_quat_w_list: list[torch.Tensor] = []
         body_lin_vel_w_list: list[torch.Tensor] = []
         body_ang_vel_w_list: list[torch.Tensor] = []
+        joint_names: list[str] | None = None
 
         for file_path in file_list:
             try:
-                data = np.load(file_path)
+                data = np.load(file_path, allow_pickle=True)
+                joint_pos, joint_vel, file_joint_names = _load_joint_arrays(data)
+                if file_joint_names is not None:
+                    if joint_names is None:
+                        joint_names = file_joint_names
+                    elif joint_names != file_joint_names:
+                        raise ValueError(f"Joint name order mismatch in motion file: {file_path}")
                 fps_list.append(float(data["fps"]))
-                joint_pos_list.append(torch.tensor(data["joint_pos"], dtype=torch.float32, device=device))
-                joint_vel_list.append(torch.tensor(data["joint_vel"], dtype=torch.float32, device=device))
+                joint_pos_list.append(torch.tensor(joint_pos, dtype=torch.float32, device=device))
+                joint_vel_list.append(torch.tensor(joint_vel, dtype=torch.float32, device=device))
                 body_pos_w_list.append(torch.tensor(data["body_pos_w"], dtype=torch.float32, device=device))
                 body_quat_w_list.append(torch.tensor(data["body_quat_w"], dtype=torch.float32, device=device))
                 body_lin_vel_w_list.append(torch.tensor(data["body_lin_vel_w"], dtype=torch.float32, device=device))
@@ -121,6 +151,7 @@ class AMPDataLoader:
         self.body_quat_w = torch.cat(body_quat_w_list, dim=0)
         self.body_lin_vel_w = torch.cat(body_lin_vel_w_list, dim=0)
         self.body_ang_vel_w = torch.cat(body_ang_vel_w_list, dim=0)
+        self.joint_names = joint_names
         self.time_step_total = self.joint_pos.shape[0]
         self.body_pos_b = torch.zeros_like(self.body_pos_w, device=device)
         self.body_quat_b = torch.zeros_like(self.body_quat_w, device=device)

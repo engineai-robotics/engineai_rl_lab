@@ -21,21 +21,21 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from engineai_rl_lab.tasks.locomotion.amp import mdp
-from engineai_rl_lab.tasks.locomotion.amp.robots.pm01 import PM01_CFG, PM_WAIST_DFS_JOINT_NAMES, PM01_DFS_JOINT_ORDER_ASSET_CFG
+from engineai_rl_lab.tasks.locomotion.amp.robots.t800 import T800_CFG, T800_DFS_JOINT_NAMES, T800_DFS_JOINT_ORDER_ASSET_CFG
 from engineai_rl_lab.tasks.tracking.robots.actuator import DelayedImplicitActuatorCfg
 
 
 def dummy_history_term(env):
-    # zero-out waist joint observations to avoid AMP mismatch between robot variants
+    # zero-out torso yaw and drop head joints to keep the AMP feature layout consistent
     robot = env.scene["robot"]
     joint_pos = mdp.joint_pos(env).clone()
     joint_vel = mdp.joint_vel(env).clone()
-    waist_joint_ids = robot.find_joints(".*WAIST_YAW.*", preserve_order=True)[0]
-    if len(waist_joint_ids) > 0:
-        waist_joint_ids = torch.as_tensor(waist_joint_ids, device=joint_pos.device)
-        joint_pos[:, waist_joint_ids] = 0.0
-        joint_vel[:, waist_joint_ids] = 0.0
-    head_joint_ids = [i for i, name in enumerate(robot.joint_names) if name == "J23_HEAD_YAW"]
+    torso_joint_ids = robot.find_joints(".*TORSO_YAW.*", preserve_order=True)[0]
+    if len(torso_joint_ids) > 0:
+        torso_joint_ids = torch.as_tensor(torso_joint_ids, device=joint_pos.device)
+        joint_pos[:, torso_joint_ids] = 0.0
+        joint_vel[:, torso_joint_ids] = 0.0
+    head_joint_ids = [i for i, name in enumerate(robot.joint_names) if "HEAD" in name]
     if len(head_joint_ids) > 0:
         keep_joint_mask = torch.ones(joint_pos.shape[1], dtype=torch.bool, device=joint_pos.device)
         keep_joint_mask[torch.as_tensor(head_joint_ids, device=joint_pos.device)] = False
@@ -48,7 +48,7 @@ def dummy_history_term(env):
 ACTUATOR_DELAY_RANGE = (2, 8)
 def _build_delayed_actuators():
     delayed_actuators = {}
-    for name, cfg in PM01_CFG.actuators.items():
+    for name, cfg in T800_CFG.actuators.items():
         delayed_actuators[name] = DelayedImplicitActuatorCfg(
             joint_names_expr=cfg.joint_names_expr,
             effort_limit=cfg.effort_limit,
@@ -68,7 +68,7 @@ def _build_delayed_actuators():
 
 
 @configclass
-class PM01SceneCfg(InteractiveSceneCfg):
+class T800SceneCfg(InteractiveSceneCfg):
     """Configuration for the terrain scene with a legged robot."""
 
     # ground terrain
@@ -88,7 +88,7 @@ class PM01SceneCfg(InteractiveSceneCfg):
         ),
     )    
     # robots
-    robot: ArticulationCfg = PM01_CFG.replace(
+    robot: ArticulationCfg = T800_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
         actuators=_build_delayed_actuators(),
     )
@@ -104,8 +104,8 @@ class PM01SceneCfg(InteractiveSceneCfg):
     )
 
 @configclass
-class PM01Rewards:
-    """Reward terms migrated from G1AmpRewards and mapped to PM01 names."""
+class T800Rewards:
+    """Reward terms mapped to T800 joint/body names."""
 
     # -- task
     track_lin_vel_xy_exp = RewTerm(
@@ -171,7 +171,7 @@ class PM01Rewards:
         weight=-0.3,
         params={
             "command_name": "base_velocity",
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["J12_WAIST_YAW"]),
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["J12_TORSO_YAW"]),
         },
     )
     feet_air_time = RewTerm(
@@ -204,7 +204,7 @@ class PM01Rewards:
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
 
 @configclass
-class PM01Termination:
+class T800Termination:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
@@ -213,20 +213,20 @@ class PM01Termination:
 
 
 @configclass
-class PM01ActionsCfg:
+class T800ActionsCfg:
     """Action specifications for the MDP."""
 
     joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
                                            use_default_offset=True, 
                                            preserve_order=True,
-                                           joint_names=PM_WAIST_DFS_JOINT_NAMES,
+                                           joint_names=T800_DFS_JOINT_NAMES,
                                            scale = {".*_HIP_PITCH_.*" : 0.5,
                                                     ".*_HIP_ROLL_.*" : 0.2,
                                                     ".*_HIP_YAW_.*" : 0.2,
                                                     ".*_KNEE_PITCH_.*" : 0.5,
                                                     ".*_ANKLE_PITCH_.*" : 0.5,
                                                     ".*_ANKLE_ROLL_.*" : 0.2,
-                                                    ".*WAIST_YAW.*" : 0.2,
+                                                    ".*TORSO_YAW.*" : 0.2,
                                                     ".*_SHOULDER_PITCH_.*" : 0.2,
                                                     ".*_SHOULDER_ROLL_.*" : 0.2,
                                                     ".*_SHOULDER_YAW_.*" : 0.2,
@@ -237,7 +237,7 @@ class PM01ActionsCfg:
 
 
 @configclass
-class PM01ObservationsCfg:
+class T800ObservationsCfg:
     """Observation specifications for the MDP."""
 
     @configclass
@@ -249,7 +249,7 @@ class PM01ObservationsCfg:
             func=mdp.joint_pos_rel,
             noise=Unoise(n_min=-0.01, n_max=0.01),
             params={
-                "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+                "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             },
             history_length=15,
         )
@@ -258,7 +258,7 @@ class PM01ObservationsCfg:
             func=mdp.joint_vel_rel,
             noise=Unoise(n_min=-1.5, n_max=1.5),
             params={
-                "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+                "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             },
             history_length=15,
         )
@@ -288,7 +288,7 @@ class PM01ObservationsCfg:
             func=mdp.joint_pos_rel,
             noise=Unoise(n_min=-0.01, n_max=0.01),
             params={
-                "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+                "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             },
             history_length=15,
         )
@@ -297,7 +297,7 @@ class PM01ObservationsCfg:
             func=mdp.joint_vel_rel,
             noise=Unoise(n_min=-1.5, n_max=1.5),
             params={
-                "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+                "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             },
             history_length=15,
         )
@@ -332,7 +332,7 @@ class PM01ObservationsCfg:
     
     
 @configclass
-class PM01Commands:
+class T800Commands:
     """Command specifications for the MDP."""
 
     base_velocity = mdp.UniformVelocityCommandCfg(
@@ -352,8 +352,8 @@ class PM01Commands:
     )
 
 @configclass
-class PM01EventCfg:
-    """PM01-specific randomizations."""
+class T800EventCfg:
+    """T800-specific randomizations."""
 
     # startup
     physics_material = EventTerm(
@@ -372,7 +372,7 @@ class PM01EventCfg:
         func=mdp.randomize_joint_default_pos,
         mode="startup",
         params={
-            "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+            "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             "pos_distribution_params": (-0.01, 0.01),
             "operation": "add",
         },
@@ -427,15 +427,15 @@ class PM01EventCfg:
 
 
 @configclass
-class PM01AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
+class T800AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
     """AMP flat environment configuration directly extending the base RL env config."""
-    scene: PM01SceneCfg = PM01SceneCfg(num_envs=4096, env_spacing=2.5)
-    observations: PM01ObservationsCfg = PM01ObservationsCfg()
-    actions: PM01ActionsCfg = PM01ActionsCfg()
-    commands: PM01Commands = PM01Commands()
-    rewards: PM01Rewards = PM01Rewards()
-    terminations: PM01Termination = PM01Termination()
-    events: PM01EventCfg = PM01EventCfg()
+    scene: T800SceneCfg = T800SceneCfg(num_envs=4096, env_spacing=2.5)
+    observations: T800ObservationsCfg = T800ObservationsCfg()
+    actions: T800ActionsCfg = T800ActionsCfg()
+    commands: T800Commands = T800Commands()
+    rewards: T800Rewards = T800Rewards()
+    terminations: T800Termination = T800Termination()
+    events: T800EventCfg = T800EventCfg()
     curriculum = None
 
     def __post_init__(self):

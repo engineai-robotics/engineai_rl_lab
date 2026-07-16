@@ -57,8 +57,7 @@ class Discriminator(nn.Module):
         if self.feature_normalization:
             x = self.normalize_input(x)
         return self.linear_layer(self.model(x)).squeeze(-1)
-    
-    # TODO: normalize feature on positive or negative samples?
+
     def update_normalization(self, x):
         if self.feature_normalization:
             for i in range(self.history_length):
