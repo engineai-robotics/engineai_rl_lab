@@ -39,11 +39,3 @@ class PM01FlatPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
 LOW_FREQ_SCALE = 0.5
 
-
-@configclass
-class G1FlatLowFreqPPORunnerCfg(PM01FlatPPORunnerCfg):
-    def __post_init__(self):
-        super().__post_init__()
-        self.num_steps_per_env = round(self.num_steps_per_env * LOW_FREQ_SCALE)
-        self.algorithm.gamma = self.algorithm.gamma ** (1 / LOW_FREQ_SCALE)
-        self.algorithm.lam = self.algorithm.lam ** (1 / LOW_FREQ_SCALE)

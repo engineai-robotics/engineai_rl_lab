@@ -2,8 +2,8 @@
 
 .. code-block:: bash
 
-python scripts/amp/csv_to_npz_folder.py --robot pm01 --input_fps 100 --output_fps 100 --input_dir 
-python scripts/amp/csv_to_npz_folder.py --robot t800 --input_fps 100 --output_fps 100 --input_dir
+python scripts/amp/csv_to_npz_folder.py --robot pm01 --input_fps 120 --output_fps 120 --input_dir 
+python scripts/amp/csv_to_npz_folder.py --robot t800 --input_fps 120 --output_fps 120 --input_dir
 """
 
 """Launch Isaac Sim Simulator first."""

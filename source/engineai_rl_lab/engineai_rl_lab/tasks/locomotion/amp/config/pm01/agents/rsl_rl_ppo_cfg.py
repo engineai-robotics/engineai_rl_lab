@@ -54,13 +54,3 @@ class PM01BasePPORunnerCfg(RslRlOnPolicyRunnerCfg):
         
         self.actor = _remove_deprecated_keys(self.actor)
         self.critic = _remove_deprecated_keys(self.critic)
-
-@configclass
-class PM01FlatPPORunnerCfg(PM01BasePPORunnerCfg):
-    max_iterations = 20000
-    experiment_name = "amp_velocity_flat_pm01"
-
-    def __post_init__(self):
-        super().__post_init__()
-        self.policy.actor_hidden_dims = [128, 128, 128]
-        self.policy.critic_hidden_dims = [128, 128, 128]

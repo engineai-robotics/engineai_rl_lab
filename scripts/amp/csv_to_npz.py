@@ -1,9 +1,6 @@
 """Replay a CSV motion file and output it to an NPZ file.
-
-.. code-block:: bash
-
-    python scripts/amp/csv_to_npz.py --robot pm01 --input_fps 100 --output_fps 100 -f <path_to_input.csv>
-    python scripts/amp/csv_to_npz.py --robot t800 --input_fps 100 --output_fps 100 -f <path_to_input.csv>
+python scripts/amp/csv_to_npz.py --robot pm01 --input_fps 100 --output_fps 100 -f <path_to_input.csv>
+python scripts/amp/csv_to_npz.py --robot t800 --input_fps 100 --output_fps 100 -f <path_to_input.csv>
 """
 
 """Launch Isaac Sim Simulator first."""

@@ -1,10 +1,7 @@
 """This script demonstrates how to use the interactive scene interface to setup a scene with multiple prims.
 
-.. code-block:: bash
-
-    # Usage
-    python scripts/amp/replay_npz.py --robot pm01 --input_file <path_to_motion.npz>
-    python scripts/amp/replay_npz.py --robot t800 --input_file <path_to_motion.npz>
+python scripts/amp/replay_npz.py --robot pm01 --input_file <path_to_motion.npz>
+python scripts/amp/replay_npz.py --robot t800 --input_file <path_to_motion.npz>
 """
 
 """Launch Isaac Sim Simulator first."""
