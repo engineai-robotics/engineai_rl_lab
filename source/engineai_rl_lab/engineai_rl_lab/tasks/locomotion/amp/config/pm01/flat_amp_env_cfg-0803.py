@@ -357,7 +357,7 @@ class PM01ObservationsCfg:
                                     params={"command_name": "base_velocity"})
         
         def __post_init__(self):
-            self.enable_corruption = False
+            self.enable_corruption = True
             self.concatenate_terms = True
 
     @configclass
@@ -406,13 +406,13 @@ class PM01Commands:
         ranges=mdp.XYZVelocityCommandCfg.Ranges(
             lin_vel_x=(0.6, 1.0),
             lin_vel_y=(0.0, 0.0),
-            ang_vel_z=(-0.6, 0.6),
+            ang_vel_z=(-0.3, 0.3),
         ),
 
         # 单轴指令可以使用独立范围。
         only_x_range=(0.6, 1.0),
         only_y_range=(0.0, 0.0),
-        only_z_range=(-0.6, 0.6),
+        only_z_range=(-0.1, 0.1),
 
         # 纯旋转时排除 |wz| < 0.3 的弱指令。
         only_x_min_abs=0.6,
@@ -460,7 +460,8 @@ class PM01EventCfg:
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
-        interval_range_s=(7.0, 14.0),
+        # interval_range_s=(1.0, 3.0),
+        interval_range_s=(10.0, 15.0),
         params={"velocity_range": {
                 "x": (-0.5, 0.5),
                 "y": (-0.5, 0.5),
@@ -525,13 +526,13 @@ class PM01AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
         self.rewards.track_lin_vel_xy_exp.weight = 3.0    
         self.rewards.track_lin_vel_xy_exp.params["std"] = 0.3
         self.rewards.flat_orientation_l2.weight = -1.0
-        self.rewards.lin_vel_z_l2.weight = -0.75
+        self.rewards.lin_vel_z_l2.weight = -0.8
         self.rewards.ang_vel_xy_l2.weight = -0.05
-        self.rewards.dof_torques_l2.weight = -2.5e-6
+        self.rewards.dof_torques_l2.weight = -2e-6
         self.rewards.dof_acc_l2.weight = -2.5e-7
-        self.rewards.action_rate_l2.weight = -0.01
-        self.rewards.action_smoothness.weight = -0.01
-        self.rewards.dof_pos_limits.weight = -0.1
+        self.rewards.action_rate_l2.weight = -0.02
+        self.rewards.action_smoothness.weight = -0.03
+        self.rewards.dof_pos_limits.weight = -0.1   
         self.rewards.joint_deviation_hip.weight = -0.05
         self.rewards.joint_deviation_arms.weight = -0.05
         self.rewards.joint_deviation_waist.weight = -1.0  

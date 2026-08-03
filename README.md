@@ -34,6 +34,8 @@ git lfs pull
 # 请确保已经激活isaaclab环境
 cd engineai_rl_lab
 pip install -e source/engineai_rl_lab
+# 安装mnn库
+pip install mnn
 ```
 
 ## 训练

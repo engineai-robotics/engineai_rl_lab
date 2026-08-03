@@ -34,6 +34,8 @@ git lfs pull
 # Make sure the Isaac Lab environment has been activated.
 cd engineai_rl_lab
 pip install -e source/engineai_rl_lab
+# install mnn
+pip install mnn
 ```
 
 ## Training

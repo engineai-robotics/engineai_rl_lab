@@ -1,12 +1,13 @@
 import math
-import numpy as np
 import os
-import torch
-import yaml
 from collections.abc import Iterator
 from pathlib import Path
 
-from isaaclab.utils.math import subtract_frame_transforms, quat_apply, quat_inv
+import numpy as np
+import torch
+import yaml
+
+from isaaclab.utils.math import quat_apply, quat_inv, subtract_frame_transforms
 
 
 def _find_repo_root(start: Path) -> Path:
@@ -74,13 +75,67 @@ def _load_joint_arrays(data: np.lib.npyio.NpzFile) -> tuple[np.ndarray, np.ndarr
     if len(keep_indices) != len(joint_names):
         joint_pos = joint_pos[:, keep_indices]
         joint_vel = joint_vel[:, keep_indices]
-    waist_indices = [idx for idx, name in enumerate(filtered_names) if "WAIST_YAW" in name]
+    waist_indices = [
+        idx for idx, name in enumerate(filtered_names) if "WAIST_YAW" in name or "TORSO_YAW" in name
+    ]
     if waist_indices:
         joint_pos = joint_pos.copy()
         joint_vel = joint_vel.copy()
         joint_pos[:, waist_indices] = 0.0
         joint_vel[:, waist_indices] = 0.0
     return joint_pos, joint_vel, filtered_names
+
+
+def _canonicalize_joint_names(joint_names: list[str] | None) -> list[str] | None:
+    """Normalize known cross-robot joint aliases for consistency checks."""
+    if joint_names is None:
+        return None
+    return [name.replace("TORSO_YAW", "WAIST_YAW") for name in joint_names]
+
+
+def _validate_motion_arrays(
+    file_path: str,
+    joint_pos: np.ndarray,
+    joint_vel: np.ndarray,
+    body_pos_w: np.ndarray,
+    body_quat_w: np.ndarray,
+    body_lin_vel_w: np.ndarray,
+    body_ang_vel_w: np.ndarray,
+) -> None:
+    """Validate one motion clip before adding it to the expert dataset."""
+    if joint_pos.ndim != 2 or joint_vel.shape != joint_pos.shape:
+        raise ValueError(
+            f"Invalid joint arrays in {file_path}: joint_pos={joint_pos.shape}, joint_vel={joint_vel.shape}"
+        )
+
+    num_frames = joint_pos.shape[0]
+    expected_shapes = {
+        "body_pos_w": (num_frames, None, 3),
+        "body_quat_w": (num_frames, None, 4),
+        "body_lin_vel_w": (num_frames, None, 3),
+        "body_ang_vel_w": (num_frames, None, 3),
+    }
+    body_arrays = {
+        "body_pos_w": body_pos_w,
+        "body_quat_w": body_quat_w,
+        "body_lin_vel_w": body_lin_vel_w,
+        "body_ang_vel_w": body_ang_vel_w,
+    }
+    num_bodies = body_pos_w.shape[1] if body_pos_w.ndim == 3 else None
+    for name, array in body_arrays.items():
+        expected = expected_shapes[name]
+        shape_is_invalid = (
+            array.ndim != 3
+            or array.shape[0] != expected[0]
+            or array.shape[1] != num_bodies
+            or array.shape[2] != expected[2]
+        )
+        if shape_is_invalid:
+            raise ValueError(f"Invalid {name} shape in {file_path}: got {array.shape}")
+
+    for name, array in {"joint_pos": joint_pos, "joint_vel": joint_vel, **body_arrays}.items():
+        if not np.isfinite(array).all():
+            raise ValueError(f"Non-finite values found in {name} of {file_path}")
 
 
 class AMPDataLoader:
@@ -130,29 +185,85 @@ class AMPDataLoader:
         motion_weights: list[float] = []
         motion_lengths: list[int] = []
         joint_names: list[str] | None = None
+        canonical_joint_names: list[str] | None = None
+        expected_fps: float | None = None
+        expected_num_bodies: int | None = None
+        loaded_motion_paths: list[str] = []
 
         for file_path, motion_weight in motion_specs:
             try:
-                data = np.load(file_path, allow_pickle=True)
-                joint_pos, joint_vel, file_joint_names = _load_joint_arrays(data)
-                if file_joint_names is not None:
-                    if joint_names is None:
+                with np.load(file_path, allow_pickle=True) as data:
+                    required_keys = {
+                        "fps",
+                        "joint_pos",
+                        "joint_vel",
+                        "body_pos_w",
+                        "body_quat_w",
+                        "body_lin_vel_w",
+                        "body_ang_vel_w",
+                        "joint_names",
+                    }
+                    missing_keys = required_keys.difference(data.files)
+                    if missing_keys:
+                        raise KeyError(f"Missing required arrays: {sorted(missing_keys)}")
+
+                    joint_pos, joint_vel, file_joint_names = _load_joint_arrays(data)
+                    file_canonical_joint_names = _canonicalize_joint_names(file_joint_names)
+                    if canonical_joint_names is None:
                         joint_names = file_joint_names
-                    elif joint_names != file_joint_names:
-                        raise ValueError(f"Joint name order mismatch in motion file: {file_path}")
-                fps_list.append(float(data["fps"]))
-                joint_pos_list.append(torch.tensor(joint_pos, dtype=torch.float32, device=device))
-                joint_vel_list.append(torch.tensor(joint_vel, dtype=torch.float32, device=device))
-                body_pos_w_list.append(torch.tensor(data["body_pos_w"], dtype=torch.float32, device=device))
-                body_quat_w_list.append(torch.tensor(data["body_quat_w"], dtype=torch.float32, device=device))
-                body_lin_vel_w_list.append(torch.tensor(data["body_lin_vel_w"], dtype=torch.float32, device=device))
-                body_ang_vel_w_list.append(torch.tensor(data["body_ang_vel_w"], dtype=torch.float32, device=device))
+                        canonical_joint_names = file_canonical_joint_names
+                    elif canonical_joint_names != file_canonical_joint_names:
+                        raise ValueError(
+                            f"Joint name order mismatch: expected {canonical_joint_names}, "
+                            f"got {file_canonical_joint_names}"
+                        )
+
+                    fps = float(data["fps"])
+                    if not math.isfinite(fps) or fps <= 0.0:
+                        raise ValueError(f"Invalid fps: {fps}")
+                    if expected_fps is None:
+                        expected_fps = fps
+                    elif not math.isclose(fps, expected_fps, rel_tol=1.0e-6):
+                        raise ValueError(f"FPS mismatch: expected {expected_fps}, got {fps}")
+
+                    body_pos_w = data["body_pos_w"]
+                    body_quat_w = data["body_quat_w"]
+                    body_lin_vel_w = data["body_lin_vel_w"]
+                    body_ang_vel_w = data["body_ang_vel_w"]
+                    _validate_motion_arrays(
+                        file_path,
+                        joint_pos,
+                        joint_vel,
+                        body_pos_w,
+                        body_quat_w,
+                        body_lin_vel_w,
+                        body_ang_vel_w,
+                    )
+                    num_bodies = body_pos_w.shape[1]
+                    if expected_num_bodies is None:
+                        expected_num_bodies = num_bodies
+                    elif num_bodies != expected_num_bodies:
+                        raise ValueError(f"Body count mismatch: expected {expected_num_bodies}, got {num_bodies}")
+
+                    fps_list.append(fps)
+                    joint_pos_list.append(torch.tensor(joint_pos, dtype=torch.float32, device=device))
+                    joint_vel_list.append(torch.tensor(joint_vel, dtype=torch.float32, device=device))
+                    body_pos_w_list.append(torch.tensor(body_pos_w, dtype=torch.float32, device=device))
+                    body_quat_w_list.append(torch.tensor(body_quat_w, dtype=torch.float32, device=device))
+                    body_lin_vel_w_list.append(torch.tensor(body_lin_vel_w, dtype=torch.float32, device=device))
+                    body_ang_vel_w_list.append(torch.tensor(body_ang_vel_w, dtype=torch.float32, device=device))
                 motion_weights.append(motion_weight)
                 motion_lengths.append(joint_pos.shape[0])
+                loaded_motion_paths.append(file_path)
             except Exception as exc:  # noqa: BLE001
-                print(f"Warning: Could not load {file_path}: {exc}")
+                raise RuntimeError(f"Failed to load AMP motion file '{file_path}': {exc}") from exc
 
-        assert len(joint_pos_list) > 0, "Failed to load any motion data"
+        if not joint_pos_list:
+            raise RuntimeError("Failed to load any AMP motion data")
+        print(
+            f"Successfully loaded all {len(loaded_motion_paths)} AMP motion files "
+            f"({sum(motion_lengths)} frames at {expected_fps:g} FPS)."
+        )
         self.fps = torch.tensor(fps_list, dtype=torch.float32, device=device)
         self.joint_pos = torch.cat(joint_pos_list, dim=0)
         self.joint_vel = torch.cat(joint_vel_list, dim=0)
@@ -161,6 +272,7 @@ class AMPDataLoader:
         self.body_lin_vel_w = torch.cat(body_lin_vel_w_list, dim=0)
         self.body_ang_vel_w = torch.cat(body_ang_vel_w_list, dim=0)
         self.joint_names = joint_names
+        self.loaded_motion_paths = loaded_motion_paths
         self.time_step_total = self.joint_pos.shape[0]
         self.motion_weights = torch.tensor(motion_weights, dtype=torch.float32, device=device)
         self.motion_lengths = torch.tensor(motion_lengths, dtype=torch.long, device=device)

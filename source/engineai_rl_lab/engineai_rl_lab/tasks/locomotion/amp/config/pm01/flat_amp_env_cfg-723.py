@@ -23,7 +23,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from engineai_rl_lab.tasks.locomotion.amp import mdp
 from engineai_rl_lab.tasks.locomotion.amp.robots.pm01 import PM01_CFG, PM_WAIST_DFS_JOINT_NAMES, PM01_DFS_JOINT_ORDER_ASSET_CFG
 from engineai_rl_lab.tasks.tracking.robots.actuator import DelayedImplicitActuatorCfg
-from engineai_rl_lab.tasks.locomotion.amp.mdp.noise import Unoise as MyNiose
+from engineai_rl_lab.tasks.tracking.mdp.noise import Unoise as myUnoise
 
 
 def dummy_history_term(env):
@@ -293,14 +293,10 @@ class PM01ObservationsCfg:
             },
             history_length=15,
         )
+
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            noise=MyNiose(
-                joint_names=PM_WAIST_DFS_JOINT_NAMES,
-                joint_noise_scales={".*ANKLE.*": 3.0},
-                default_n_min=-0.5,
-                default_n_max=0.5,
-            ),
+            noise=Unoise(n_min=-1.5, n_max=1.5),
             params={
                 "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
             },
@@ -357,7 +353,7 @@ class PM01ObservationsCfg:
                                     params={"command_name": "base_velocity"})
         
         def __post_init__(self):
-            self.enable_corruption = False
+            self.enable_corruption = True
             self.concatenate_terms = True
 
     @configclass
@@ -393,31 +389,31 @@ class PM01Commands:
     # )
     base_velocity = mdp.XYZVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=(5.0, 12.0),
+        resampling_time_range=(10.0, 10.0),
         debug_vis=True,
 
         # 所有指令中的占比。
         standing_ratio=0.1,
         only_x_ratio=0.1,
         only_y_ratio=0.0,
-        only_z_ratio=0.1,
+        only_z_ratio=0.2,
 
         # 剩余自动作为 xyz 混合指令。
         ranges=mdp.XYZVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.6, 1.0),
+            lin_vel_x=(0.0, 0.6),
             lin_vel_y=(0.0, 0.0),
             ang_vel_z=(-0.6, 0.6),
         ),
 
         # 单轴指令可以使用独立范围。
-        only_x_range=(0.6, 1.0),
-        only_y_range=(0.0, 0.0),
+        only_x_range=(0.1, 0.6),
+        only_y_range=(-0.4, 0.4),
         only_z_range=(-0.6, 0.6),
 
         # 纯旋转时排除 |wz| < 0.3 的弱指令。
-        only_x_min_abs=0.6,
-        only_y_min_abs=0.0,
-        only_z_min_abs=0.05,
+        only_x_min_abs=0.1,
+        only_y_min_abs=0.1,
+        only_z_min_abs=0.3,
     )
 
 @configclass
@@ -460,7 +456,8 @@ class PM01EventCfg:
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
-        interval_range_s=(7.0, 14.0),
+        # interval_range_s=(1.0, 3.0),
+        interval_range_s=(10.0, 15.0),
         params={"velocity_range": {
                 "x": (-0.5, 0.5),
                 "y": (-0.5, 0.5),
@@ -519,26 +516,31 @@ class PM01AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = 0.005
 
+        # command
+        self.commands.base_velocity.ranges.lin_vel_x = (0, 0.6)  # 0.7
+        self.commands.base_velocity.ranges.lin_vel_y = (0, 0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.6, 0.6)
+        self.commands.base_velocity.resampling_time_range = (10, 10)
+
         # reward weights
         self.rewards.track_ang_vel_z_exp.weight = 3.0   
         self.rewards.track_ang_vel_z_exp.params["std"] = 0.3         
-        self.rewards.track_lin_vel_xy_exp.weight = 3.0    
-        self.rewards.track_lin_vel_xy_exp.params["std"] = 0.3
+        self.rewards.track_lin_vel_xy_exp.weight = 3.0           
         self.rewards.flat_orientation_l2.weight = -1.0
-        self.rewards.lin_vel_z_l2.weight = -0.75
+        self.rewards.lin_vel_z_l2.weight = -0.8
         self.rewards.ang_vel_xy_l2.weight = -0.05
-        self.rewards.dof_torques_l2.weight = -2.5e-6
-        self.rewards.dof_acc_l2.weight = -2.5e-7
+        self.rewards.dof_torques_l2.weight = -2e-6
+        self.rewards.dof_acc_l2.weight = -1e-7 #-2e-8
         self.rewards.action_rate_l2.weight = -0.01
         self.rewards.action_smoothness.weight = -0.01
-        self.rewards.dof_pos_limits.weight = -0.1
+        self.rewards.dof_pos_limits.weight = -0.1   
         self.rewards.joint_deviation_hip.weight = -0.05
         self.rewards.joint_deviation_arms.weight = -0.05
         self.rewards.joint_deviation_waist.weight = -1.0  
         self.rewards.feet_air_time.params["threshold"] = 0.25
-        self.rewards.feet_air_time.weight = 0.75
-        self.rewards.feet_slide.weight = -0.15
-        self.rewards.feet_clearance_turning.weight = 0.0
-        self.rewards.feet_air_time_similarity.weight = 0.5
-        self.rewards.command_stall.weight = -0.5
+        self.rewards.feet_air_time.weight = 0.5
+        self.rewards.feet_slide.weight = -0.2
+        self.rewards.feet_clearance_turning.weight = 0.0 #0.01
+        self.rewards.feet_air_time_similarity.weight = 5.0
+        self.rewards.command_stall.weight = -3.0
         self.rewards.termination_penalty.weight = -50.0
