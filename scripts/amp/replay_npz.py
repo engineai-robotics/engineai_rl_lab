@@ -2,11 +2,14 @@
 
 python scripts/amp/replay_npz.py --robot pm01 --input_file <path_to_motion.npz>
 python scripts/amp/replay_npz.py --robot t800 --input_file <path_to_motion.npz>
+
+python scripts/amp/replay_npz.py --robot pm01 --input_file <path_to_motion_folder>
 """
 
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+from pathlib import Path
 import numpy as np
 import torch
 
@@ -17,7 +20,12 @@ DEFAULT_INPUT_FILE = "datasets/amp/walk_pm_test.npz"
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Replay converted motions.")
 parser.add_argument("--registry_name", type=str, default=None, help="The name of the wandb registry.")
-parser.add_argument("--input_file", type=str, default=DEFAULT_INPUT_FILE, help="Path to a local .npz motion file.")
+parser.add_argument(
+    "--input_file",
+    type=str,
+    default=DEFAULT_INPUT_FILE,
+    help="Path to a local .npz motion file or a folder containing .npz motion files.",
+)
 parser.add_argument(
     "--robot", type=str, default="pm01", choices=["pm01", "t800"], help="Robot type to use."
 )
@@ -88,6 +96,21 @@ ROBOT_JOINT_NAMES = {
 }
 
 
+def _find_motion_files(input_path: str) -> list[str]:
+    """Return one motion file or all .npz files in a folder, sorted by name."""
+    path = Path(input_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Motion path does not exist: {path}")
+    if path.is_file():
+        return [str(path)]
+    if path.is_dir():
+        motion_files = sorted(path.glob("*.npz"))
+        if not motion_files:
+            raise FileNotFoundError(f"No .npz motion files found in folder: {path}")
+        return [str(file) for file in motion_files]
+    raise ValueError(f"Motion path is neither a file nor a folder: {path}")
+
+
 @configclass
 class ReplayMotionsSceneCfg(InteractiveSceneCfg):
     """Configuration for a replay motions scene."""
@@ -105,26 +128,11 @@ class ReplayMotionsSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = ROBOT_CFGS[args_cli.robot].replace(prim_path="{ENV_REGEX_NS}/Robot")
 
 
-def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
-    # Extract scene entities
-    robot: Articulation = scene["robot"]
-    if args_cli.registry_name is not None:
-        registry_name = args_cli.registry_name
-        if ":" not in registry_name:
-            registry_name += ":latest"
-        import pathlib
-
-        import wandb
-
-        api = wandb.Api()
-        artifact = api.artifact(registry_name)
-        motion_file = str(pathlib.Path(artifact.download()) / "motion.npz")
-    else:
-        motion_file = args_cli.input_file
-
+def _load_motion(
+    motion_file: str, robot: Articulation, sim: sim_utils.SimulationContext
+) -> tuple[AMPDataLoader, float, list[int] | slice, int]:
     motion = AMPDataLoader(motion_file=motion_file, device=sim.device, history_length=1)
     sim_dt = 1.0 / float(motion.fps[0].item())
-    time_steps = torch.full((scene.num_envs,), -1, dtype=torch.long, device=sim.device)
     num_motion_joints = motion.joint_pos.shape[-1]
     num_sim_joints = robot.data.default_joint_pos.shape[-1]
     motion_joint_names = motion.joint_names
@@ -166,11 +174,43 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             f"{num_robot_joints} joints. Extra joint columns will be ignored."
         )
 
+    return motion, sim_dt, robot_joint_indexes, num_robot_joints
+
+
+def _resolve_motion_files() -> list[str]:
+    if args_cli.registry_name is not None:
+        registry_name = args_cli.registry_name
+        if ":" not in registry_name:
+            registry_name += ":latest"
+
+        import wandb
+
+        api = wandb.Api()
+        artifact = api.artifact(registry_name)
+        return [str(Path(artifact.download()) / "motion.npz")]
+    return _find_motion_files(args_cli.input_file)
+
+
+def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
+    # Extract scene entities
+    robot: Articulation = scene["robot"]
+    motion_files = _resolve_motion_files()
+    motion_index = 0
+    motion, sim_dt, robot_joint_indexes, num_robot_joints = _load_motion(motion_files[motion_index], robot, sim)
+    print(f"[INFO]: Replaying motion 1/{len(motion_files)}: {motion_files[motion_index]}")
+    time_steps = torch.full((scene.num_envs,), -1, dtype=torch.long, device=sim.device)
+
     # Simulation loop
     while simulation_app.is_running():
         time_steps += 1
         reset_ids = time_steps >= motion.time_step_total
-        time_steps[reset_ids] = 0
+        if torch.any(reset_ids):
+            motion_index = (motion_index + 1) % len(motion_files)
+            motion, sim_dt, robot_joint_indexes, num_robot_joints = _load_motion(
+                motion_files[motion_index], robot, sim
+            )
+            print(f"[INFO]: Replaying motion {motion_index + 1}/{len(motion_files)}: {motion_files[motion_index]}")
+            time_steps[:] = 0
 
         root_states = robot.data.default_root_state.clone()
         root_states[:, :3] = motion.body_pos_w[time_steps, 0] + scene.env_origins

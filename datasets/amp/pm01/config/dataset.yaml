@@ -1,7 +1,7 @@
 motions:
-  - file: ../data/step_left_002_Skeleton1.npz
+  - file: ../data/step_left_002_Skeleton1_2.npz
     weight: 2.0
-  - file: ../data/step_right_001_Skeleton1.npz
+  - file: ../data/step_right_001_Skeleton1_2.npz
     weight: 2.0
   - file: ../data/walk_left_fast_001_Skeleton7.npz
     weight: 1.0
