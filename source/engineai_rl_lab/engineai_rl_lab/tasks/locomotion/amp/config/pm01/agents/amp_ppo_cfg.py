@@ -57,8 +57,8 @@ class PM01FlatAMPPPORunnerCfg_V1(PM01BasePPORunnerCfg):
     max_iterations: int = 20000
     save_interval: int = 4000
     # AMP parameters
-    style_reward_scale: float = 5.0
-    task_style_lerp: float = 0.5
+    style_reward_scale: float = 2.0 #10.0
+    task_style_lerp: float = 0.3
     frame_length: int = 5
     frame_dim: int = 32
     frame_normalization: bool = True

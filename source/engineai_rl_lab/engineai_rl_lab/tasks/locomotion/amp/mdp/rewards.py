@@ -138,6 +138,30 @@ def feet_air_time_similarity(
     reward = torch.exp(-diff * scale)
     return reward * (recent_contact & valid)
 
+
+def feet_air_time_positive_biped_pure_yaw(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    threshold: float,
+    sensor_cfg: SceneEntityCfg,
+    yaw_threshold: float = 0.2,
+) -> torch.Tensor:
+    """Reward sustained single support whenever the yaw command is active."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
+    contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+    in_contact = contact_time > 0.0
+    in_mode_time = torch.where(in_contact, contact_time, air_time)
+
+    single_stance = torch.sum(in_contact.int(), dim=1) == 1
+    reward = torch.min(torch.where(single_stance.unsqueeze(-1), in_mode_time, 0.0), dim=1).values
+    reward = torch.clamp(reward, max=threshold)
+
+    command = env.command_manager.get_command(command_name)
+    yaw_command_active = torch.abs(command[:, 2]) > yaw_threshold
+    return reward * yaw_command_active
+
+
 # T800
 # def feet_clearance_turning(
 #     env: ManagerBasedRLEnv,

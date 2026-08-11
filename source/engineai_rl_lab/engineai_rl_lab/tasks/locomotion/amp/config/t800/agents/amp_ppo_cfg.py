@@ -57,8 +57,8 @@ class T800FlatAMPPPORunnerCfg_V1(T800BasePPORunnerCfg):
     max_iterations: int = 20000
     save_interval: int = 2000
     # AMP parameters
-    style_reward_scale: float = 5.0
-    task_style_lerp: float = 0.5
+    style_reward_scale: float = 2.0
+    task_style_lerp: float = 0.4
     frame_length: int = 5
     frame_dim: int = 32
     frame_normalization: bool = True

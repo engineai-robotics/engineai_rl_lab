@@ -136,8 +136,8 @@ remote_dir="~/projects/engineai_robotics"
 # 进入容器
 engineai_robotics_env
 # 安装程序
-./install pm01_edu robot
-# ./install t800 robot
+./install.sh pm01_edu robot
+# ./install.sh t800 robot
 ```
 
 3. 真机运行

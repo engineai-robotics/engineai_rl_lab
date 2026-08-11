@@ -129,14 +129,14 @@ class T800Rewards:
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-2.0e-6)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-1.0e-7)
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
-    action_smoothness = RewTerm(
-        func=mdp.action_smoothness_with_curriculum,
-        weight=-0.04,
-        params={"start_scale": 0.1,
-                "power": 0.8,
-                "interval_epochs": 200*24
-                },
-    )
+    # action_smoothness = RewTerm(
+    #     func=mdp.action_smoothness_with_curriculum,
+    #     weight=-0.04,
+    #     params={"start_scale": 0.1,
+    #             "power": 0.8,
+    #             "interval_epochs": 200*24
+    #             },
+    # )
     dof_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
@@ -175,15 +175,22 @@ class T800Rewards:
         },
     )
     feet_air_time = RewTerm(
-        func=mdp.feet_air_time_all_direction,
+        func=mdp.feet_air_time_positive_biped,
         weight=0.5,
         params={
             "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"],
-            ),
-            "threshold": 0.25,
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+            "threshold": 0.4,
+        },
+    )
+    feet_air_time_turning = RewTerm(
+        func=mdp.feet_air_time_positive_biped_pure_yaw,
+        weight=0.5,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+            "threshold": 0.4,
+            "yaw_threshold": 0.2,
         },
     )
     feet_slide = RewTerm(
@@ -200,18 +207,6 @@ class T800Rewards:
             ),
         },
     )
-    feet_clearance_turning = RewTerm(
-        func=mdp.feet_clearance_turning,
-        weight=2.0,
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
-            "command_name": "base_velocity",
-            "stand_threshold": 0.1,
-            "yaw_threshold": 0.3,
-            "target_clearance": 0.1,
-        },
-    )
     feet_air_time_similarity = RewTerm(
         func=mdp.feet_air_time_similarity,
         weight=0.5,
@@ -223,16 +218,7 @@ class T800Rewards:
             "scale": 4.0,
             "min_air_time": 0.05,
         },
-    )
-    command_stall = RewTerm(
-        func=mdp.command_stall_penalty,
-        weight=-2.0,
-        params={
-            "command_name": "base_velocity",
-            "command_threshold": 0.1,
-            "response_fraction": 0.2,
-        },
-    )       
+    )    
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
 
 @configclass
@@ -398,7 +384,7 @@ class T800Commands:
         standing_ratio=0.1,
         only_x_ratio=0.1,
         only_y_ratio=0.0,
-        only_z_ratio=0.1,
+        only_z_ratio=0.3,
 
         # 剩余自动作为 xyz 混合指令。
         ranges=mdp.XYZVelocityCommandCfg.Ranges(
@@ -415,7 +401,7 @@ class T800Commands:
         # 纯旋转时排除 |wz| < 0.3 的弱指令。
         only_x_min_abs=0.6,
         only_y_min_abs=0.0,
-        only_z_min_abs=0.05,
+        only_z_min_abs=0.3,
     )
     
 @configclass
@@ -518,7 +504,7 @@ class T800AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
             self.scene.contact_forces.update_period = 0.005
 
         # reward weights
-        self.rewards.track_ang_vel_z_exp.weight = 3.0
+        self.rewards.track_ang_vel_z_exp.weight = 2.0
         self.rewards.track_ang_vel_z_exp.params["std"] = 0.3
         self.rewards.track_lin_vel_xy_exp.weight = 3.0        
         self.rewards.track_lin_vel_xy_exp.params["std"] = 0.3
@@ -527,16 +513,17 @@ class T800AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
         self.rewards.ang_vel_xy_l2.weight = -0.05
         self.rewards.dof_torques_l2.weight = -2e-6
         self.rewards.dof_acc_l2.weight = -1e-7
-        self.rewards.action_rate_l2.weight = -0.01
-        self.rewards.action_smoothness.weight = -0.01
-        self.rewards.dof_pos_limits.weight = -0.1
+        self.rewards.action_rate_l2.weight = -0.01 #-0.01
+        # self.rewards.action_smoothness.weight = -0.05 #-0.01
+        self.rewards.dof_pos_limits.weight = -1.0
         self.rewards.joint_deviation_hip.weight = -0.05
         self.rewards.joint_deviation_arms.weight = -0.05
         self.rewards.joint_deviation_waist.weight = -1.0
-        self.rewards.feet_air_time.params["threshold"] = 0.25
-        self.rewards.feet_air_time.weight = 0.75
-        self.rewards.feet_slide.weight = -0.2
-        self.rewards.feet_clearance_turning.weight = 0.0
-        self.rewards.feet_air_time_similarity.weight = 1.0
-        self.rewards.command_stall.weight = -0.5
+        self.rewards.feet_air_time.params["threshold"] = 0.3
+        self.rewards.feet_air_time.weight = 1.0
+        self.rewards.feet_air_time_turning.params["threshold"] = 0.3
+        self.rewards.feet_air_time_turning.weight = 2.0
+        self.rewards.feet_slide.weight = -0.1
+        self.rewards.feet_air_time_similarity.weight = 1.5
+        # self.rewards.command_stall.weight = 0.0
         self.rewards.termination_penalty.weight = -50.0

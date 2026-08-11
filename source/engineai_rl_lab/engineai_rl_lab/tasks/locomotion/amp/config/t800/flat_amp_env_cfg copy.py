@@ -7,7 +7,7 @@ from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import SceneEntityCfg 
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.scene import InteractiveSceneCfg
@@ -21,30 +21,24 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from engineai_rl_lab.tasks.locomotion.amp import mdp
-from engineai_rl_lab.tasks.locomotion.amp.robots.pm01 import PM01_CFG, PM_WAIST_DFS_JOINT_NAMES, PM01_DFS_JOINT_ORDER_ASSET_CFG
+from engineai_rl_lab.tasks.locomotion.amp.robots.t800 import T800_CFG, T800_DFS_JOINT_NAMES, T800_DFS_JOINT_ORDER_ASSET_CFG
 from engineai_rl_lab.tasks.tracking.robots.actuator import DelayedImplicitActuatorCfg
 from engineai_rl_lab.tasks.locomotion.amp.mdp.noise import Unoise as MyNiose
 
-
 def dummy_history_term(env):
-    # zero-out waist joint observations to avoid AMP mismatch between robot variants
+    # zero-out torso yaw and drop head joints to keep the AMP feature layout consistent
     robot = env.scene["robot"]
     joint_pos = mdp.joint_pos(env).clone()
     joint_vel = mdp.joint_vel(env).clone()
-    waist_joint_ids = robot.find_joints(
-        ".*WAIST_YAW.*", preserve_order=True)[0]
-    if len(waist_joint_ids) > 0:
-        waist_joint_ids = torch.as_tensor(
-            waist_joint_ids, device=joint_pos.device)
-        joint_pos[:, waist_joint_ids] = 0.0
-        joint_vel[:, waist_joint_ids] = 0.0
-    head_joint_ids = [i for i, name in enumerate(
-        robot.joint_names) if name == "J23_HEAD_YAW"]
+    torso_joint_ids = robot.find_joints(".*TORSO_YAW.*", preserve_order=True)[0]
+    if len(torso_joint_ids) > 0:
+        torso_joint_ids = torch.as_tensor(torso_joint_ids, device=joint_pos.device)
+        joint_pos[:, torso_joint_ids] = 0.0
+        joint_vel[:, torso_joint_ids] = 0.0
+    head_joint_ids = [i for i, name in enumerate(robot.joint_names) if "HEAD" in name]
     if len(head_joint_ids) > 0:
-        keep_joint_mask = torch.ones(
-            joint_pos.shape[1], dtype=torch.bool, device=joint_pos.device)
-        keep_joint_mask[torch.as_tensor(
-            head_joint_ids, device=joint_pos.device)] = False
+        keep_joint_mask = torch.ones(joint_pos.shape[1], dtype=torch.bool, device=joint_pos.device)
+        keep_joint_mask[torch.as_tensor(head_joint_ids, device=joint_pos.device)] = False
         joint_pos = joint_pos[:, keep_joint_mask]
     lin_vel = mdp.robot_base_lin_vel_b(env)
     ang_vel = mdp.robot_base_ang_vel_b(env)
@@ -57,7 +51,7 @@ def dummy_history_term(env):
 ACTUATOR_DELAY_RANGE = (2, 8)
 def _build_delayed_actuators():
     delayed_actuators = {}
-    for name, cfg in PM01_CFG.actuators.items():
+    for name, cfg in T800_CFG.actuators.items():
         delayed_actuators[name] = DelayedImplicitActuatorCfg(
             joint_names_expr=cfg.joint_names_expr,
             effort_limit=cfg.effort_limit,
@@ -77,7 +71,7 @@ def _build_delayed_actuators():
 
 
 @configclass
-class PM01SceneCfg(InteractiveSceneCfg):
+class T800SceneCfg(InteractiveSceneCfg):
     """Configuration for the terrain scene with a legged robot."""
 
     # ground terrain
@@ -95,15 +89,14 @@ class PM01SceneCfg(InteractiveSceneCfg):
             mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
             project_uvw=True,
         ),
-    )
+    )    
     # robots
-    robot: ArticulationCfg = PM01_CFG.replace(
+    robot: ArticulationCfg = T800_CFG.replace(
         prim_path="{ENV_REGEX_NS}/Robot",
         actuators=_build_delayed_actuators(),
     )
     # sensors
-    contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
+    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
     # lights
     sky_light = AssetBaseCfg(
         prim_path="/World/skyLight",
@@ -113,10 +106,9 @@ class PM01SceneCfg(InteractiveSceneCfg):
         ),
     )
 
-
 @configclass
-class PM01Rewards:
-    """Reward terms migrated from G1AmpRewards and mapped to PM01 names."""
+class T800Rewards:
+    """Reward terms mapped to T800 joint/body names."""
 
     # -- task
     track_lin_vel_xy_exp = RewTerm(
@@ -129,6 +121,8 @@ class PM01Rewards:
         weight=2.0,
         params={"command_name": "base_velocity", "std": 0.5},
     )
+
+    # -- penalties
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-0.2)
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
@@ -177,21 +171,30 @@ class PM01Rewards:
         func=mdp.joint_deviation_l1,
         weight=-0.3,
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names=["J12_WAIST_YAW"]),
+            "asset_cfg": SceneEntityCfg("robot", joint_names=["J12_TORSO_YAW"]),
         },
     )
+    # feet_air_time = RewTerm(
+    #     func=mdp.feet_air_time_all_direction,
+    #     weight=0.5,
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces",
+    #             body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"],
+    #         ),
+    #         "threshold": 0.25,
+    #     },
+    # )
     feet_air_time = RewTerm(
-        func=mdp.feet_air_time_all_direction,
+        func=mdp.feet_air_time_positive_biped,
         weight=0.5,
         params={
             "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces",
-                body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"],
-            ),
-            "threshold": 0.25,
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
+            "threshold": 0.4,
         },
-    )
+    ) 
     feet_slide = RewTerm(
         func=mdp.feet_slide,
         weight=-0.1,
@@ -238,46 +241,45 @@ class PM01Rewards:
             "command_threshold": 0.1,
             "response_fraction": 0.2,
         },
-    )    
+    )       
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-50.0)
 
-
 @configclass
-class PM01Termination:
+class T800Termination:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=[
-                                             "LINK_BASE", "LINK_KNEE_PITCH.*", ".*SHOULDER.*", ".*ELBOW.*", "LINK_TORSO_YAW"]), "threshold": 1.0},
+                                             "LINK_BASE", "LINK_KNEE_PITCH.*", ".*SHOULDER.*", ".*ELBOW.*", "LINK_WAIST_YAW"]), "threshold": 1.0},
     )
 
 
 @configclass
-class PM01ActionsCfg:
+class T800ActionsCfg:
     """Action specifications for the MDP."""
 
     joint_pos = mdp.JointPositionActionCfg(asset_name="robot",
-                                           use_default_offset=True,
+                                           use_default_offset=True, 
                                            preserve_order=True,
-                                           joint_names=PM_WAIST_DFS_JOINT_NAMES,
-                                           scale={".*_HIP_PITCH_.*": 0.5,
-                                                  ".*_HIP_ROLL_.*": 0.2,
-                                                  ".*_HIP_YAW_.*": 0.2,
-                                                  ".*_KNEE_PITCH_.*": 0.5,
-                                                  ".*_ANKLE_PITCH_.*": 0.5,
-                                                  ".*_ANKLE_ROLL_.*": 0.2,
-                                                  ".*WAIST_YAW.*": 0.2,
-                                                  ".*_SHOULDER_PITCH_.*": 0.2,
-                                                  ".*_SHOULDER_ROLL_.*": 0.2,
-                                                  ".*_SHOULDER_YAW_.*": 0.2,
-                                                  ".*_ELBOW_PITCH_.*": 0.2,
-                                                  ".*_ELBOW_YAW_.*": 0.2
-                                                  }
+                                           joint_names=T800_DFS_JOINT_NAMES,
+                                           scale = {".*_HIP_PITCH_.*" : 0.5,
+                                                    ".*_HIP_ROLL_.*" : 0.2,
+                                                    ".*_HIP_YAW_.*" : 0.2,
+                                                    ".*_KNEE_PITCH_.*" : 0.5,
+                                                    ".*_ANKLE_PITCH_.*" : 0.5,
+                                                    ".*_ANKLE_ROLL_.*" : 0.2,
+                                                    ".*TORSO_YAW.*" : 0.2,
+                                                    ".*_SHOULDER_PITCH_.*" : 0.2,
+                                                    ".*_SHOULDER_ROLL_.*" : 0.2,
+                                                    ".*_SHOULDER_YAW_.*" : 0.2,
+                                                    ".*_ELBOW_PITCH_.*" : 0.2,
+                                                    ".*_ELBOW_YAW_.*" : 0.2
+                                                }
                                            )
 
 
 @configclass
-class PM01ObservationsCfg:
+class T800ObservationsCfg:
     """Observation specifications for the MDP."""
 
     @configclass
@@ -289,39 +291,42 @@ class PM01ObservationsCfg:
             func=mdp.joint_pos_rel,
             noise=Unoise(n_min=-0.01, n_max=0.01),
             params={
-                "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+                "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             },
             history_length=15,
         )
+
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
             noise=MyNiose(
-                joint_names=PM_WAIST_DFS_JOINT_NAMES,
+                joint_names=T800_DFS_JOINT_NAMES,
                 joint_noise_scales={".*ANKLE.*": 3.0},
                 default_n_min=-0.5,
                 default_n_max=0.5,
             ),
             params={
-                "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+                "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             },
             history_length=15,
         )
+        
         actions = ObsTerm(func=mdp.last_action,
-                          history_length=15)
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel,
+                          history_length=15)        
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, 
                                noise=Unoise(n_min=-0.2, n_max=0.2),
-                               history_length=15)
+                            history_length=15)
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
             history_length=15
         )
-        velocity_commands = ObsTerm(func=mdp.generated_commands,params={"command_name": "base_velocity"})
-
+        velocity_commands = ObsTerm(func=mdp.generated_commands, 
+                                    params={"command_name": "base_velocity"})        
+        
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
-
+    
     @configclass
     class CriticCfg(ObsGroup):
 
@@ -330,32 +335,34 @@ class PM01ObservationsCfg:
             func=mdp.joint_pos_rel,
             noise=Unoise(n_min=-0.01, n_max=0.01),
             params={
-                "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+                "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             },
             history_length=15,
         )
+        
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
             noise=Unoise(n_min=-1.5, n_max=1.5),
             params={
-                "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+                "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             },
             history_length=15,
         )
+        
         actions = ObsTerm(func=mdp.last_action,
-                          history_length=15)
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel,
+                          history_length=15)        
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, 
                                noise=Unoise(n_min=-0.2, n_max=0.2),
-                               history_length=15)
+                            history_length=15)
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
             history_length=15
         )
-        velocity_commands = ObsTerm(func=mdp.generated_commands,
+        velocity_commands = ObsTerm(func=mdp.generated_commands, 
                                     params={"command_name": "base_velocity"})
-        
+
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = True
@@ -363,18 +370,17 @@ class PM01ObservationsCfg:
     @configclass
     class AMPCfg(ObsGroup):
         history = ObsTerm(func=dummy_history_term)
-
         def __post_init__(self):
             self.history_length = 5
-
+        
     # observation groups
     policy: PolicyCfg = PolicyCfg()
     critic: CriticCfg = CriticCfg()
     amp: AMPCfg = AMPCfg()
-
-
+    
+    
 @configclass
-class PM01Commands:
+class T800Commands:
     """Command specifications for the MDP."""
 
     # base_velocity = mdp.UniformVelocityCommandCfg(
@@ -387,10 +393,11 @@ class PM01Commands:
     #     debug_vis=True,
     #     ranges=mdp.UniformVelocityCommandCfg.Ranges(
     #         lin_vel_x=(0, 0.8),
-    #         lin_vel_y=(0, 0),
+    #         lin_vel_y=(0,0),
     #         ang_vel_z=(-1.0, 1.0),
     #     ),
     # )
+
     base_velocity = mdp.XYZVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(5.0, 12.0),
@@ -419,10 +426,10 @@ class PM01Commands:
         only_y_min_abs=0.0,
         only_z_min_abs=0.05,
     )
-
+    
 @configclass
-class PM01EventCfg:
-    """PM01-specific randomizations."""
+class T800EventCfg:
+    """T800-specific randomizations."""
 
     # startup
     physics_material = EventTerm(
@@ -441,7 +448,7 @@ class PM01EventCfg:
         func=mdp.randomize_joint_default_pos,
         mode="startup",
         params={
-            "asset_cfg": PM01_DFS_JOINT_ORDER_ASSET_CFG,
+            "asset_cfg": T800_DFS_JOINT_ORDER_ASSET_CFG,
             "pos_distribution_params": (-0.01, 0.01),
             "operation": "add",
         },
@@ -449,7 +456,7 @@ class PM01EventCfg:
 
     base_com = EventTerm(
         func=mdp.randomize_rigid_body_com,
-        mode="startup", 
+        mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="LINK_BASE"),
             "com_range": {"x": (-0.025, 0.025), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
@@ -469,7 +476,7 @@ class PM01EventCfg:
                 "pitch": (-0.52, 0.52),
                 "yaw": (-0.78, 0.78),
                 }
-                },
+            },
     )
 
     reset_base = EventTerm(
@@ -487,7 +494,7 @@ class PM01EventCfg:
             },
         },
     )
-
+    
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_scale,
         mode="reset",
@@ -496,15 +503,15 @@ class PM01EventCfg:
 
 
 @configclass
-class PM01AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
+class T800AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
     """AMP flat environment configuration directly extending the base RL env config."""
-    scene: PM01SceneCfg = PM01SceneCfg(num_envs=4096, env_spacing=2.5)
-    observations: PM01ObservationsCfg = PM01ObservationsCfg()
-    actions: PM01ActionsCfg = PM01ActionsCfg()
-    commands: PM01Commands = PM01Commands()
-    rewards: PM01Rewards = PM01Rewards()
-    terminations: PM01Termination = PM01Termination()
-    events: PM01EventCfg = PM01EventCfg()
+    scene: T800SceneCfg = T800SceneCfg(num_envs=4096, env_spacing=2.5)
+    observations: T800ObservationsCfg = T800ObservationsCfg()
+    actions: T800ActionsCfg = T800ActionsCfg()
+    commands: T800Commands = T800Commands()
+    rewards: T800Rewards = T800Rewards()
+    terminations: T800Termination = T800Termination()
+    events: T800EventCfg = T800EventCfg()
     curriculum = None
 
     def __post_init__(self):
@@ -520,25 +527,25 @@ class PM01AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
             self.scene.contact_forces.update_period = 0.005
 
         # reward weights
-        self.rewards.track_ang_vel_z_exp.weight = 1.5
+        self.rewards.track_ang_vel_z_exp.weight = 2.0
         self.rewards.track_ang_vel_z_exp.params["std"] = 0.3
-        self.rewards.track_lin_vel_xy_exp.weight = 3.0
-        self.rewards.track_lin_vel_xy_exp.params["std"] = 0.3        
+        self.rewards.track_lin_vel_xy_exp.weight = 3.0        
+        self.rewards.track_lin_vel_xy_exp.params["std"] = 0.3
         self.rewards.flat_orientation_l2.weight = -1.0
-        self.rewards.lin_vel_z_l2.weight = -0.2
+        self.rewards.lin_vel_z_l2.weight = -0.8
         self.rewards.ang_vel_xy_l2.weight = -0.05
-        self.rewards.dof_torques_l2.weight = -1e-6
-        self.rewards.dof_acc_l2.weight = -2e-8
-        self.rewards.action_rate_l2.weight = -0.002
-        self.rewards.action_smoothness.weight = -0.002
+        self.rewards.dof_torques_l2.weight = -2e-6
+        self.rewards.dof_acc_l2.weight = -1e-7
+        self.rewards.action_rate_l2.weight = -0.075 #-0.01
+        self.rewards.action_smoothness.weight = -0.05 #-0.01
         self.rewards.dof_pos_limits.weight = -0.1
         self.rewards.joint_deviation_hip.weight = -0.05
-        self.rewards.joint_deviation_arms.weight = -0.02
-        self.rewards.joint_deviation_waist.weight = -0.2
-        self.rewards.feet_air_time.params["threshold"] = 0.4
-        self.rewards.feet_air_time.weight = 1.5
-        self.rewards.feet_slide.weight = -0.1
-        self.rewards.feet_clearance_turning.weight = 0.01
+        self.rewards.joint_deviation_arms.weight = -0.05
+        self.rewards.joint_deviation_waist.weight = -1.0
+        self.rewards.feet_air_time.params["threshold"] = 0.25
+        self.rewards.feet_air_time.weight = 0.75
+        self.rewards.feet_slide.weight = -0.2
+        self.rewards.feet_clearance_turning.weight = 0.0
         self.rewards.feet_air_time_similarity.weight = 1.0
-        self.rewards.command_stall.weight = -2.0
+        self.rewards.command_stall.weight = 0.0 #-0.5
         self.rewards.termination_penalty.weight = -50.0

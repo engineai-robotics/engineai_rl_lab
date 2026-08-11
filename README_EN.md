@@ -138,8 +138,8 @@ remote_dir="~/projects/engineai_robotics"
 engineai_robotics_env
 
 # Install.
-./install pm01_edu robot
-# ./install t800 robot
+./install.sh pm01_edu robot
+# ./install.sh t800 robot
 ```
 
 3. Run on the real robot:
