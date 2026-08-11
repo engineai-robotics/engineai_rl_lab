@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -71,6 +72,8 @@ class AMPPPOV2(PPO):
         discriminator: Discriminator | None = None,
         data_loader: AMPDataLoader | None = None,
         amp_obs_group: str = "amp",
+        amp_condition_group: str = "amp_command",
+        condition_dim: int = 0,
         style_reward_scale: float = 2.0,
         task_style_lerp: float = 0.5,
         loss_type: str = "LSGAN",
@@ -122,6 +125,8 @@ class AMPPPOV2(PPO):
         self.discriminator = discriminator.to(self.device)
         self.data_loader = data_loader
         self.amp_obs_group = amp_obs_group
+        self.amp_condition_group = amp_condition_group
+        self.condition_dim = condition_dim
         self.loss_type = _LOSS_TYPE_MAP[loss_type]
 
         # Reward shaping parameters
@@ -181,6 +186,9 @@ class AMPPPOV2(PPO):
     ) -> None:
         """Blend task and style rewards (lerp) before delegating to the base PPO bookkeeping."""
         amp_obs = obs[self.amp_obs_group]
+        condition = None
+        if self.condition_dim > 0:
+            condition = obs[self.amp_condition_group]
 
         # Optional terminal-observation correction: at episode boundaries the environment has
         # already reset, so the discriminator observation would come from the fresh episode.
@@ -190,6 +198,12 @@ class AMPPPOV2(PPO):
             if torch.any(done_mask):
                 amp_obs = amp_obs.clone()
                 amp_obs[done_mask] = extras["terminal_obs"][self.amp_obs_group][done_mask]
+                if condition is not None and self.amp_condition_group in extras["terminal_obs"]:
+                    condition = condition.clone()
+                    condition[done_mask] = extras["terminal_obs"][self.amp_condition_group][done_mask]
+
+        if condition is not None:
+            amp_obs = torch.cat([amp_obs, condition], dim=-1)
 
         # Compute the style reward without polluting the discriminator's running statistics
         # (mirrors Discriminator.get_amp_reward toggling eval/train).
@@ -203,7 +217,15 @@ class AMPPPOV2(PPO):
 
         task_reward = rewards.clone()
         # Linear interpolation between task and style reward (legged_lab semantics).
-        total_reward = self.task_style_lerp * task_reward + (1.0 - self.task_style_lerp) * style_reward
+        blended_reward = self.task_style_lerp * task_reward + (1.0 - self.task_style_lerp) * style_reward
+        if condition is not None:
+            supported = self.data_loader.condition_support_mask(condition)
+            style_reward = style_reward * supported
+            # There is no standing expert clip in the dataset. Do not dilute the
+            # task reward for an unsupported condition.
+            total_reward = torch.where(supported, blended_reward, task_reward)
+        else:
+            total_reward = blended_reward
 
         super().process_env_step(obs, total_reward, dones, extras)
 
@@ -246,21 +268,42 @@ class AMPPPOV2(PPO):
         mean_policy_score = 0.0
         mean_expert_score = 0.0
 
-        # Mini batch generators. The reference generator uses the same batch/epoch counts so the
-        # two iterators stay aligned when zipped.
+        # PPO minibatches and, for legacy unconditional AMP, an aligned expert iterator.
         if self.actor.is_recurrent or self.critic.is_recurrent:
             generator = self.storage.recurrent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
         else:
             generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
-        reference_generator = self.data_loader.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+        reference_iterator = None
+        if self.condition_dim == 0:
+            reference_iterator = iter(
+                self.data_loader.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+            )
+        conditional_reference_batch_size = math.ceil(
+            self.data_loader.time_step_total / self.num_mini_batches
+        )
 
         mini_batch_idx = 0
         disc_updates_done = 0
-        for batch, expert_batch in zip(generator, reference_generator):
+        for batch in generator:
             original_batch_size = batch.observations.batch_size[0]
 
             # Capture the agent's discriminator observation before any symmetry augmentation.
-            amp_policy_batch = batch.observations[self.amp_obs_group]
+            amp_policy_features = batch.observations[self.amp_obs_group]
+            if self.condition_dim > 0:
+                amp_condition = batch.observations[self.amp_condition_group]
+                supported = self.data_loader.condition_support_mask(amp_condition)
+                amp_condition = amp_condition[supported]
+                amp_policy_batch = torch.cat(
+                    [amp_policy_features[supported], amp_condition],
+                    dim=-1,
+                )
+                expert_batch = self.data_loader.sample_conditioned(
+                    amp_condition,
+                    max_samples=conditional_reference_batch_size,
+                )
+            else:
+                amp_policy_batch = amp_policy_features
+                expert_batch = next(reference_iterator)
 
             # Normalize advantages per minibatch if requested.
             if self.normalize_advantage_per_mini_batch:
@@ -464,6 +507,7 @@ class AMPPPOV2(PPO):
         alg_cfg["discriminator"] = Discriminator(
             input_dim_per_frame=cfg["frame_dim"],
             input_history_length=cfg["frame_length"],
+            condition_dim=cfg.get("condition_dim", 0),
             hidden_dims=cfg["discriminator_hidden_dims"],
             feature_normalization=cfg.get("frame_normalization", True),
             device=device,
@@ -473,11 +517,16 @@ class AMPPPOV2(PPO):
         alg_cfg["data_loader"] = AMPDataLoader(
             cfg["dataset_path"],
             history_length=cfg["frame_length"],
+            include_joint_vel=cfg.get("include_joint_vel", False),
+            include_foot_features=cfg.get("include_foot_features", False),
+            condition_dim=cfg.get("condition_dim", 0),
             device=device,
         )
 
         # AMP hyperparameters (defaults keep the runner cfg minimal; override in the agent cfg).
         alg_cfg["amp_obs_group"] = cfg.get("amp_obs_group", "amp")
+        alg_cfg["amp_condition_group"] = cfg.get("amp_condition_group", "amp_command")
+        alg_cfg["condition_dim"] = cfg.get("condition_dim", 0)
         # ``style_reward_scale`` falls back to the legacy ``style_reward_weight`` if not set.
         alg_cfg["style_reward_scale"] = cfg.get("style_reward_scale", cfg.get("style_reward_weight", 2.0))
         alg_cfg["task_style_lerp"] = cfg.get("task_style_lerp", 0.5)

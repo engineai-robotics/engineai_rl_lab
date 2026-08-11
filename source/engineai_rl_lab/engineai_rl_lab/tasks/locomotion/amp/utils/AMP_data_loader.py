@@ -29,8 +29,10 @@ def _resolve_repo_path(path_like: str) -> Path:
     return path
 
 
-def _load_motion_list_from_yaml(yaml_path: Path) -> list[tuple[str, float]]:
-    """Parse YAML motion config into absolute file paths and sampling weights."""
+def _load_motion_list_from_yaml(
+    yaml_path: Path,
+) -> tuple[list[tuple[str, float, tuple[float, float, float] | None]], list[int] | None]:
+    """Parse YAML motion paths, weights, conditional commands, and body metadata."""
     if not yaml_path.is_file():
         raise AssertionError(f"Invalid YAML path: {yaml_path}")
 
@@ -38,17 +40,29 @@ def _load_motion_list_from_yaml(yaml_path: Path) -> list[tuple[str, float]]:
         data = yaml.safe_load(yaml_file) or {}
     motions = data.get("motions", [])
     base_dir = yaml_path.parent
-    motions_with_weights: list[tuple[str, float]] = []
+    motion_specs: list[tuple[str, float, tuple[float, float, float] | None]] = []
+    foot_body_indices = data.get("foot_body_indices")
+    if foot_body_indices is not None:
+        if not isinstance(foot_body_indices, list) or len(foot_body_indices) != 2:
+            raise ValueError("foot_body_indices must contain exactly two body indices.")
+        foot_body_indices = [int(index) for index in foot_body_indices]
 
     for entry in motions:
         weight = float(entry.get("weight", 1.0))
         if not math.isfinite(weight) or weight <= 0.0:
             raise ValueError(f"Motion weight must be finite and positive, got {weight}: {entry}")
+        command = entry.get("command")
+        if command is not None:
+            if not isinstance(command, list) or len(command) != 3:
+                raise ValueError(f"Motion command must be [vx, vy, wz], got: {command}")
+            command = tuple(float(value) for value in command)
+            if not all(math.isfinite(value) for value in command):
+                raise ValueError(f"Motion command must be finite, got: {command}")
         if "file" in entry:
             file_path = (base_dir / entry["file"]).resolve()
             if not file_path.is_file():
                 raise AssertionError(f"Motion file not found: {file_path}")
-            motions_with_weights.append((str(file_path), weight))
+            motion_specs.append((str(file_path), weight, command))
         elif "folder" in entry:
             folder_path = (base_dir / entry["folder"]).resolve()
             if not folder_path.is_dir():
@@ -56,10 +70,10 @@ def _load_motion_list_from_yaml(yaml_path: Path) -> list[tuple[str, float]]:
             npz_files = sorted(p for p in folder_path.iterdir() if p.suffix == ".npz")
             if not npz_files:
                 raise AssertionError(f"No .npz files found in folder: {folder_path}")
-            motions_with_weights.extend((str(file_path), weight) for file_path in npz_files)
+            motion_specs.extend((str(file_path), weight, command) for file_path in npz_files)
         else:
             raise ValueError(f"Each motion entry must contain 'file' or 'folder': {entry}")
-    return motions_with_weights
+    return motion_specs, foot_body_indices
 
 
 def _load_joint_arrays(data: np.lib.npyio.NpzFile) -> tuple[np.ndarray, np.ndarray, list[str] | None]:
@@ -144,35 +158,51 @@ class AMPDataLoader:
         motion_file: str | list[str],
         device: str = "cpu",
         history_length: int = 5,
+        include_joint_vel: bool = False,
+        include_foot_features: bool = False,
+        condition_dim: int = 0,
     ):
         assert history_length >= 1, "history_length must be positive"
+        if condition_dim not in (0, 3):
+            raise ValueError(f"condition_dim must be 0 or 3, got {condition_dim}.")
 
-        motion_specs: list[tuple[str, float]] = []
+        motion_specs: list[tuple[str, float, tuple[float, float, float] | None]] = []
+        foot_body_indices: list[int] | None = None
         if isinstance(motion_file, str):
             motion_path = _resolve_repo_path(motion_file)
             if motion_path.suffix == ".yaml":
-                motion_specs.extend(_load_motion_list_from_yaml(motion_path))
+                yaml_specs, foot_body_indices = _load_motion_list_from_yaml(motion_path)
+                motion_specs.extend(yaml_specs)
             elif motion_path.is_file() and motion_path.suffix == ".npz":
-                motion_specs.append((str(motion_path), 1.0))
+                motion_specs.append((str(motion_path), 1.0, None))
             elif motion_path.is_dir():
                 for file_name in sorted(os.listdir(motion_path)):
                     full_path = motion_path / file_name
                     if full_path.suffix == ".npz" and full_path.is_file():
-                        motion_specs.append((str(full_path), 1.0))
+                        motion_specs.append((str(full_path), 1.0, None))
             else:
                 raise AssertionError(f"Invalid motion source: {motion_file}")
         elif isinstance(motion_file, list):
             for file_name in motion_file:
                 motion_path = _resolve_repo_path(file_name)
                 if motion_path.suffix == ".yaml":
-                    motion_specs.extend(_load_motion_list_from_yaml(motion_path))
+                    yaml_specs, yaml_foot_body_indices = _load_motion_list_from_yaml(motion_path)
+                    motion_specs.extend(yaml_specs)
+                    if foot_body_indices is None:
+                        foot_body_indices = yaml_foot_body_indices
+                    elif yaml_foot_body_indices != foot_body_indices:
+                        raise ValueError("All motion YAML files must use the same foot_body_indices.")
                 elif motion_path.is_file() and motion_path.suffix == ".npz":
-                    motion_specs.append((str(motion_path), 1.0))
+                    motion_specs.append((str(motion_path), 1.0, None))
 
         assert len(motion_specs) > 0, f"No valid motion data found in: {motion_file}"
+        if condition_dim > 0 and any(command is None for _, _, command in motion_specs):
+            raise ValueError("Every motion requires a [vx, vy, wz] command label for conditional AMP.")
+        if include_foot_features and foot_body_indices is None:
+            raise ValueError("Conditional foot features require foot_body_indices in the motion YAML.")
         print("\n=========== AMP Motion File List ===========")
-        for idx, (path, weight) in enumerate(motion_specs):
-            print(f"{idx + 1:2d}. weight={weight:g}  {path}")
+        for idx, (path, weight, command) in enumerate(motion_specs):
+            print(f"{idx + 1:2d}. weight={weight:g} command={command}  {path}")
         print(f"=========== Total: {len(motion_specs)} files ===========\n")
 
         fps_list: list[float] = []
@@ -184,13 +214,14 @@ class AMPDataLoader:
         body_ang_vel_w_list: list[torch.Tensor] = []
         motion_weights: list[float] = []
         motion_lengths: list[int] = []
+        motion_commands: list[tuple[float, float, float]] = []
         joint_names: list[str] | None = None
         canonical_joint_names: list[str] | None = None
         expected_fps: float | None = None
         expected_num_bodies: int | None = None
         loaded_motion_paths: list[str] = []
 
-        for file_path, motion_weight in motion_specs:
+        for file_path, motion_weight, motion_command in motion_specs:
             try:
                 with np.load(file_path, allow_pickle=True) as data:
                     required_keys = {
@@ -254,6 +285,7 @@ class AMPDataLoader:
                     body_ang_vel_w_list.append(torch.tensor(body_ang_vel_w, dtype=torch.float32, device=device))
                 motion_weights.append(motion_weight)
                 motion_lengths.append(joint_pos.shape[0])
+                motion_commands.append(motion_command or (0.0, 0.0, 0.0))
                 loaded_motion_paths.append(file_path)
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError(f"Failed to load AMP motion file '{file_path}': {exc}") from exc
@@ -276,8 +308,14 @@ class AMPDataLoader:
         self.time_step_total = self.joint_pos.shape[0]
         self.motion_weights = torch.tensor(motion_weights, dtype=torch.float32, device=device)
         self.motion_lengths = torch.tensor(motion_lengths, dtype=torch.long, device=device)
+        self.motion_commands = torch.tensor(motion_commands, dtype=torch.float32, device=device)
         motion_starts = torch.cumsum(self.motion_lengths, dim=0) - self.motion_lengths
+        self.motion_starts = motion_starts
         self.frame_motion_start = torch.repeat_interleave(motion_starts, self.motion_lengths)
+        self.frame_motion_id = torch.repeat_interleave(
+            torch.arange(len(motion_lengths), device=device),
+            self.motion_lengths,
+        )
         # Divide each clip's mass over its frames: the total probability of selecting
         # a clip is proportional to its YAML weight, independent of clip duration.
         per_motion_frame_weight = self.motion_weights / self.motion_lengths.to(torch.float32)
@@ -289,6 +327,19 @@ class AMPDataLoader:
         self.projected_gravity_b = torch.zeros((self.time_step_total, 3), dtype=torch.float32, device=device)
         self.num_bodies = self.body_pos_w.shape[1]
         self.history_length = history_length
+        self.include_joint_vel = include_joint_vel
+        self.include_foot_features = include_foot_features
+        self.condition_dim = condition_dim
+        self.foot_body_indices = (
+            torch.tensor(foot_body_indices, dtype=torch.long, device=device)
+            if foot_body_indices is not None
+            else None
+        )
+        if self.foot_body_indices is not None:
+            if torch.any(self.foot_body_indices < 0) or torch.any(self.foot_body_indices >= self.num_bodies):
+                raise ValueError(
+                    f"foot_body_indices {foot_body_indices} are invalid for {self.num_bodies} bodies."
+                )
 
         # world-frame gravity direction, rotated into the base frame per timestep below
         gravity_vec_w = torch.tensor([[0.0, 0.0, -1.0]], dtype=torch.float32, device=device)
@@ -319,22 +370,87 @@ class AMPDataLoader:
         self.base_lin_vel_b = self.body_lin_vel_b[:, 0, :]
         self.base_ang_vel_b = self.body_ang_vel_b[:, 0, :]
 
-    # Ugly mini batch generator; the observation acquirement need to be re-designed
+    def _gather_frame_features(self, idxs: torch.Tensor) -> list[torch.Tensor]:
+        """Collect one physical AMP frame in the same order as the environment."""
+        features = [self.joint_pos[idxs] * 9]
+        if self.include_joint_vel:
+            features.append(self.joint_vel[idxs])
+        features.extend(
+            [
+                self.base_lin_vel_b[idxs] * 7,
+                self.base_ang_vel_b[idxs],
+                self.projected_gravity_b[idxs],
+            ]
+        )
+        if self.include_foot_features:
+            features.extend(
+                [
+                    self.body_pos_b[idxs][:, self.foot_body_indices].flatten(start_dim=1),
+                    self.body_lin_vel_b[idxs][:, self.foot_body_indices].flatten(start_dim=1),
+                ]
+            )
+        return features
+
+    def _gather_history(self, batch_indices: torch.Tensor) -> torch.Tensor:
+        """Gather an oldest-to-newest history without crossing clip boundaries."""
+        history_offsets = torch.arange(
+            -(self.history_length - 1),
+            1,
+            device=self.joint_pos.device,
+        )
+        motion_starts = self.frame_motion_start[batch_indices]
+        frame_features = []
+        for offset in history_offsets:
+            idxs = torch.maximum(batch_indices + offset, motion_starts)
+            frame_features.extend(self._gather_frame_features(idxs))
+        return torch.cat(frame_features, dim=-1)
+
+    def condition_support_mask(self, commands: torch.Tensor) -> torch.Tensor:
+        """Exclude standing commands until the dataset contains a standing expert clip."""
+        if self.condition_dim == 0:
+            return torch.ones(commands.shape[0], dtype=torch.bool, device=commands.device)
+        return torch.linalg.vector_norm(commands, dim=1) > 0.1
+
+    def sample_conditioned(
+        self,
+        commands: torch.Tensor,
+        max_samples: int | None = None,
+        temperature: float = 0.05,
+    ) -> torch.Tensor:
+        """Sample expert histories from clips whose YAML labels match policy commands."""
+        if self.condition_dim == 0:
+            raise RuntimeError("sample_conditioned requires condition_dim > 0.")
+        if commands.ndim != 2 or commands.shape[1] != self.condition_dim:
+            raise ValueError(
+                f"Expected commands with shape [N, {self.condition_dim}], got {tuple(commands.shape)}."
+            )
+        if commands.shape[0] == 0:
+            raise ValueError("Cannot sample conditional AMP data for an empty command batch.")
+
+        if max_samples is not None and commands.shape[0] > max_samples:
+            selection = torch.randperm(commands.shape[0], device=commands.device)[:max_samples]
+            commands = commands[selection]
+
+        squared_distance = torch.sum(
+            torch.square(commands.unsqueeze(1) - self.motion_commands.unsqueeze(0)),
+            dim=-1,
+        )
+        logits = -squared_distance / max(temperature, 1.0e-6)
+        logits = logits + torch.log(self.motion_weights).unsqueeze(0)
+        motion_probabilities = torch.softmax(logits, dim=1)
+        motion_ids = torch.multinomial(motion_probabilities, num_samples=1).squeeze(1)
+
+        motion_lengths = self.motion_lengths[motion_ids]
+        frame_offsets = torch.floor(
+            torch.rand(commands.shape[0], device=commands.device) * motion_lengths
+        ).to(torch.long)
+        batch_indices = self.motion_starts[motion_ids] + frame_offsets
+        return torch.cat([self._gather_history(batch_indices), commands], dim=-1)
+
     def mini_batch_generator(self, num_mini_batches, num_epoches) -> Iterator[torch.Tensor]:
         """Generate mini-batches of motion data."""
         num_samples = self.joint_pos.shape[0]
         batch_size = math.ceil(num_samples / num_mini_batches)
-        # history is ordered old -> new; offsets are negative to zero so the last frame is "current"
-        history_offsets = torch.arange(-(self.history_length - 1), 1, device=self.joint_pos.device)
-
-        def gather_frame_features(idxs: torch.Tensor) -> list[torch.Tensor]:
-            """Collect per-frame features for the given indices."""
-            pos = self.joint_pos[idxs] * 9
-            base_lin = self.base_lin_vel_b[idxs] * 7
-            base_ang = self.base_ang_vel_b[idxs]
-            projected_gravity = self.projected_gravity_b[idxs]
-            # order must match dummy_history_term in the env configs
-            return [pos, base_lin, base_ang, projected_gravity]
 
         for _ in range(num_epoches):
             # Sample with replacement so YAML weights control each clip's expected
@@ -346,13 +462,8 @@ class AMPDataLoader:
             )
             for i in range(0, num_samples, batch_size):
                 batch_indices = indices[i:i + batch_size]
-                motion_starts = self.frame_motion_start[batch_indices]
-
-                frame_features = []
-                # history direction: old -> new (last frame aligns with batch_indices)
-                for offset in history_offsets:
-                    # Clamp at this clip's first frame, never into the previous motion.
-                    idxs = torch.maximum(batch_indices + offset, motion_starts)
-                    frame_features.extend(gather_frame_features(idxs))
-
-                yield torch.cat(frame_features, dim=-1)
+                batch = self._gather_history(batch_indices)
+                if self.condition_dim > 0:
+                    commands = self.motion_commands[self.frame_motion_id[batch_indices]]
+                    batch = torch.cat([batch, commands], dim=-1)
+                yield batch

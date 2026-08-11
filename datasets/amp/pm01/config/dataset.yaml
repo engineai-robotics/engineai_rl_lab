@@ -1,18 +1,28 @@
+foot_body_indices: [25, 26]
+
 motions:
   - file: ../data/step_left_002_Skeleton1_2.npz
     weight: 2.0
+    command: [0.0, 0.0, 0.8]
   - file: ../data/step_right_001_Skeleton1_2.npz
     weight: 2.0
+    command: [0.0, 0.0, -0.7]
   - file: ../data/walk_left_fast_001_Skeleton7.npz
     weight: 1.0
+    command: [0.70, 0.05, 0.12]
   - file: ../data/walk_left_slow_001_Skeleton7.npz
     weight: 1.0
+    command: [0.57, 0.03, 0.10]
   - file: ../data/walk_right_fast_001_Skeleton7.npz
     weight: 1.0
+    command: [0.72, -0.01, -0.14]
   - file: ../data/walk_right_slow_001_Skeleton7.npz
     weight: 1.0
+    command: [0.52, -0.04, -0.10]
   - file: ../data/walk_staight_fast_001_Skeleton7.npz
     weight: 1.0
+    command: [0.60, -0.01, 0.0]
   - file: ../data/walk_staight_slow_001_Skeleton7.npz
     weight: 1.0
+    command: [0.47, 0.0, 0.0]
     

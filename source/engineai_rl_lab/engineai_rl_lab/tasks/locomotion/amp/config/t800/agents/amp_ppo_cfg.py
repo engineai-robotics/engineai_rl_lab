@@ -59,8 +59,12 @@ class T800FlatAMPPPORunnerCfg_V1(T800BasePPORunnerCfg):
     # AMP parameters
     style_reward_scale: float = 2.0
     task_style_lerp: float = 0.4
-    frame_length: int = 5
-    frame_dim: int = 32
+    frame_length: int = 51
+    frame_dim: int = 67
+    condition_dim: int = 3
+    include_joint_vel: bool = True
+    include_foot_features: bool = True
+    amp_condition_group: str = "amp_command"
     frame_normalization: bool = True
     discriminator_hidden_dims: list[int] = [512, 256, 128]
     experiment_name: str = "amp_velocity_flat_t800"

@@ -16,6 +16,7 @@ class Discriminator(nn.Module):
         self,
         input_dim_per_frame: int = 58,
         input_history_length: int = 1,
+        condition_dim: int = 0,
         hidden_dims: list[int] = [256, 128],
         activation: str = "relu",
         feature_normalization: bool = False,  # if True, normalize input features with EmpiricalNormalization
@@ -24,10 +25,11 @@ class Discriminator(nn.Module):
         super().__init__()
 
         self.device = device
-        curr_in_dim = input_dim_per_frame * input_history_length
+        curr_in_dim = input_dim_per_frame * input_history_length + condition_dim
         print("Discriminator input dim:", curr_in_dim)
         self.frame_size = input_dim_per_frame
         self.history_length = input_history_length
+        self.condition_dim = condition_dim
         
         self.activation = resolve_nn_activation(activation) #type: ignore
         
@@ -45,15 +47,20 @@ class Discriminator(nn.Module):
 
     def normalize_input(self, x):
         if self.feature_normalization:
-            # avoid in-place on a leaf tensor by normalizing frame slices and re-concatenating
-            frames = torch.split(x, self.frame_size, dim=1)
+            feature_end = self.history_length * self.frame_size
+            feature_input = x[:, :feature_end]
+            condition = x[:, feature_end:]
+            # Normalize physical frame slices with shared statistics. Keep the
+            # command condition in its original velocity units.
+            frames = torch.split(feature_input, self.frame_size, dim=1)
             norm_frames = [self.feature_norm(frame) for frame in frames]
-            x = torch.cat(norm_frames, dim=1)
+            x = torch.cat([*norm_frames, condition], dim=1)
         return x
 
     def forward(self, x):
-        assert self.history_length * self.frame_size == x.shape[1], \
-            f"Input feature dimension {x.shape[1]} does not match expected size {self.history_length * self.frame_size}"
+        expected_size = self.history_length * self.frame_size + self.condition_dim
+        assert expected_size == x.shape[1], \
+            f"Input feature dimension {x.shape[1]} does not match expected size {expected_size}"
         if self.feature_normalization:
             x = self.normalize_input(x)
         return self.linear_layer(self.model(x)).squeeze(-1)
@@ -74,11 +81,14 @@ class Discriminator(nn.Module):
         return r
 
     def compute_grad_pen(self, expert_data, lambda_=10):
-        expert_data.requires_grad = True
-        disc = self.forward(expert_data)
+        feature_end = self.history_length * self.frame_size
+        physical_features = expert_data[:, :feature_end].detach().requires_grad_(True)
+        condition = expert_data[:, feature_end:].detach()
+        discriminator_input = torch.cat([physical_features, condition], dim=1)
+        disc = self.forward(discriminator_input)
         ones = torch.ones(disc.size(), device=disc.device)
         grad = torch.autograd.grad(
-            outputs=disc, inputs=expert_data,
+            outputs=disc, inputs=physical_features,
             grad_outputs=ones, create_graph=True,
             retain_graph=True, only_inputs=True)[0]
 

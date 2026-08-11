@@ -144,9 +144,18 @@ def feet_air_time_positive_biped_pure_yaw(
     command_name: str,
     threshold: float,
     sensor_cfg: SceneEntityCfg,
+    asset_cfg: SceneEntityCfg,
     yaw_threshold: float = 0.2,
+    linear_velocity_threshold: float = 0.05,
+    target_clearance: float = 0.14,
+    clearance_std: float = 0.04,
 ) -> torch.Tensor:
-    """Reward sustained single support whenever the yaw command is active."""
+    """Reward high, sustained steps that make progress on a pure-yaw command."""
+    if threshold <= 0.0:
+        raise ValueError("threshold must be greater than zero.")
+    if clearance_std <= 0.0:
+        raise ValueError("clearance_std must be greater than zero.")
+
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
     contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
@@ -154,12 +163,40 @@ def feet_air_time_positive_biped_pure_yaw(
     in_mode_time = torch.where(in_contact, contact_time, air_time)
 
     single_stance = torch.sum(in_contact.int(), dim=1) == 1
-    reward = torch.min(torch.where(single_stance.unsqueeze(-1), in_mode_time, 0.0), dim=1).values
-    reward = torch.clamp(reward, max=threshold)
+    air_time_reward = torch.min(
+        torch.where(single_stance.unsqueeze(-1), in_mode_time, 0.0),
+        dim=1,
+    ).values
+    air_time_reward = torch.clamp(air_time_reward / threshold, min=0.0, max=1.0)
+
+    asset = env.scene[asset_cfg.name]
+    foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
+    support_height = torch.sum(foot_height * in_contact, dim=1) / torch.sum(
+        in_contact.float(), dim=1
+    ).clamp_min(1.0)
+    swing_height = torch.sum(
+        (foot_height - support_height.unsqueeze(1)) * (~in_contact),
+        dim=1,
+    )
+    clearance_reward = torch.exp(-torch.square((swing_height - target_clearance) / clearance_std))
 
     command = env.command_manager.get_command(command_name)
-    yaw_command_active = torch.abs(command[:, 2]) > yaw_threshold
-    return reward * yaw_command_active
+    pure_yaw_command = (
+        (torch.linalg.vector_norm(command[:, :2], dim=1) < linear_velocity_threshold)
+        & (torch.abs(command[:, 2]) > yaw_threshold)
+    )
+
+    yaw_speed = asset.data.root_ang_vel_w[:, 2]
+    yaw_progress = yaw_speed * torch.sign(command[:, 2])
+    yaw_progress_ratio = torch.clamp(
+        yaw_progress / torch.abs(command[:, 2]).clamp_min(1.0e-6),
+        min=0.0,
+        max=1.0,
+    )
+
+    reward = 0.5 * air_time_reward + 0.5 * clearance_reward
+    progress_scale = 0.25 + 0.75 * yaw_progress_ratio
+    return reward * progress_scale * single_stance * pure_yaw_command
 
 
 # T800

@@ -18,12 +18,15 @@ from isaaclab.terrains import TerrainImporterCfg
 ##
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.utils.math import quat_apply_inverse
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from engineai_rl_lab.tasks.locomotion.amp import mdp
 from engineai_rl_lab.tasks.locomotion.amp.robots.pm01 import PM01_CFG, PM_WAIST_DFS_JOINT_NAMES, PM01_DFS_JOINT_ORDER_ASSET_CFG
 from engineai_rl_lab.tasks.tracking.robots.actuator import DelayedImplicitActuatorCfg
 from engineai_rl_lab.tasks.locomotion.amp.mdp.noise import Unoise as MyNiose
+
+AMP_FOOT_BODY_NAMES = ["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]
 
 
 def dummy_history_term(env):
@@ -46,12 +49,46 @@ def dummy_history_term(env):
         keep_joint_mask[torch.as_tensor(
             head_joint_ids, device=joint_pos.device)] = False
         joint_pos = joint_pos[:, keep_joint_mask]
+        joint_vel = joint_vel[:, keep_joint_mask]
     lin_vel = mdp.robot_base_lin_vel_b(env)
     ang_vel = mdp.robot_base_ang_vel_b(env)
     projected_gravity = mdp.projected_gravity(env)
 
+    foot_body_ids = getattr(env, "_pm01_amp_foot_body_ids", None)
+    if foot_body_ids is None:
+        foot_body_ids = torch.as_tensor(
+            robot.find_bodies(AMP_FOOT_BODY_NAMES, preserve_order=True)[0],
+            device=joint_pos.device,
+            dtype=torch.long,
+        )
+        env._pm01_amp_foot_body_ids = foot_body_ids
+
+    foot_pos_w = robot.data.body_pos_w[:, foot_body_ids, :]
+    foot_vel_w = robot.data.body_lin_vel_w[:, foot_body_ids, :]
+    num_feet = foot_body_ids.numel()
+    base_quat_w = robot.data.root_quat_w.unsqueeze(1).expand(-1, num_feet, -1).reshape(-1, 4)
+    foot_pos_b = quat_apply_inverse(
+        base_quat_w,
+        (foot_pos_w - robot.data.root_pos_w.unsqueeze(1)).reshape(-1, 3),
+    ).reshape(joint_pos.shape[0], num_feet * 3)
+    foot_vel_b = quat_apply_inverse(
+        base_quat_w,
+        foot_vel_w.reshape(-1, 3),
+    ).reshape(joint_pos.shape[0], num_feet * 3)
+
     # feature order must match gather_frame_features in AMP_data_loader.py
-    return torch.cat([joint_pos * 9, lin_vel * 7, ang_vel, projected_gravity], dim=-1)
+    return torch.cat(
+        [
+            joint_pos * 9,
+            joint_vel,
+            lin_vel * 7,
+            ang_vel,
+            projected_gravity,
+            foot_pos_b,
+            foot_vel_b,
+        ],
+        dim=-1,
+    )
 
 
 ACTUATOR_DELAY_RANGE = (2, 8)
@@ -206,16 +243,26 @@ class PM01Rewards:
             ),
         },
     )
-    feet_clearance_turning = RewTerm(
-        func=mdp.feet_clearance_turning,
-        weight=2.0,
+    feet_air_time_turning = RewTerm(
+        func=mdp.feet_air_time_positive_biped_pure_yaw,
+        weight=1.0,
         params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]),
             "command_name": "base_velocity",
-            "stand_threshold": 0.1,
-            "yaw_threshold": 0.3,
-            "target_clearance": 0.1,
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces",
+                body_names=AMP_FOOT_BODY_NAMES,
+                preserve_order=True,
+            ),
+            "asset_cfg": SceneEntityCfg(
+                "robot",
+                body_names=AMP_FOOT_BODY_NAMES,
+                preserve_order=True,
+            ),
+            "threshold": 0.35,
+            "yaw_threshold": 0.5,
+            "linear_velocity_threshold": 0.05,
+            "target_clearance": 0.14,
+            "clearance_std": 0.04,
         },
     )
     feet_air_time_similarity = RewTerm(
@@ -365,12 +412,23 @@ class PM01ObservationsCfg:
         history = ObsTerm(func=dummy_history_term)
 
         def __post_init__(self):
-            self.history_length = 5
+            self.history_length = 51
+
+    @configclass
+    class AMPCommandCfg(ObsGroup):
+        command = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "base_velocity"},
+        )
+
+        def __post_init__(self):
+            self.concatenate_terms = True
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
     critic: CriticCfg = CriticCfg()
     amp: AMPCfg = AMPCfg()
+    amp_command: AMPCommandCfg = AMPCommandCfg()
 
 
 @configclass
@@ -412,12 +470,12 @@ class PM01Commands:
         # 单轴指令可以使用独立范围。
         only_x_range=(0.6, 1.0),
         only_y_range=(0.0, 0.0),
-        only_z_range=(-0.6, 0.6),
+        only_z_range=(-1.0, 1.0),
 
         # 纯旋转时排除 |wz| < 0.3 的弱指令。
         only_x_min_abs=0.6,
         only_y_min_abs=0.0,
-        only_z_min_abs=0.05,
+        only_z_min_abs=0.6,
     )
 
 @configclass
@@ -530,7 +588,7 @@ class PM01AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
         self.rewards.dof_torques_l2.weight = -1e-6
         self.rewards.dof_acc_l2.weight = -2e-8
         self.rewards.action_rate_l2.weight = -0.002
-        self.rewards.action_smoothness.weight = -0.002
+        self.rewards.action_smoothness.weight = -0.03
         self.rewards.dof_pos_limits.weight = -0.1
         self.rewards.joint_deviation_hip.weight = -0.05
         self.rewards.joint_deviation_arms.weight = -0.02
@@ -538,7 +596,7 @@ class PM01AMPFlatEnvCfg(ManagerBasedRLEnvCfg):
         self.rewards.feet_air_time.params["threshold"] = 0.4
         self.rewards.feet_air_time.weight = 1.5
         self.rewards.feet_slide.weight = -0.1
-        self.rewards.feet_clearance_turning.weight = 0.01
-        self.rewards.feet_air_time_similarity.weight = 1.0
+        self.rewards.feet_air_time_turning.weight = 1.0
+        self.rewards.feet_air_time_similarity.weight = 0.0
         self.rewards.command_stall.weight = -2.0
         self.rewards.termination_penalty.weight = -50.0
