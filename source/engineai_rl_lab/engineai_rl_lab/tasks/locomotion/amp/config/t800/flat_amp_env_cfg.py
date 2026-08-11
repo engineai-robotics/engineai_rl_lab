@@ -423,21 +423,6 @@ class T800ObservationsCfg:
 class T800Commands:
     """Command specifications for the MDP."""
 
-    # base_velocity = mdp.UniformVelocityCommandCfg(
-    #     asset_name="robot",
-    #     resampling_time_range=(7.5, 7.5),
-    #     rel_standing_envs=0.1,
-    #     rel_heading_envs=1.0,
-    #     heading_command=False,
-    #     heading_control_stiffness=0.5,
-    #     debug_vis=True,
-    #     ranges=mdp.UniformVelocityCommandCfg.Ranges(
-    #         lin_vel_x=(0, 0.8),
-    #         lin_vel_y=(0,0),
-    #         ang_vel_z=(-1.0, 1.0),
-    #     ),
-    # )
-
     base_velocity = mdp.XYZVelocityCommandCfg(
         asset_name="robot",
         resampling_time_range=(5.0, 12.0),
@@ -462,9 +447,9 @@ class T800Commands:
         only_z_range=(-1.0, 1.0),
 
         # 纯旋转时排除 |wz| < 0.3 的弱指令。
-        only_x_min_abs=0.6,
+        only_x_min_abs=0.4,
         only_y_min_abs=0.0,
-        only_z_min_abs=0.6,
+        only_z_min_abs=0.4,
     )
     
 @configclass
