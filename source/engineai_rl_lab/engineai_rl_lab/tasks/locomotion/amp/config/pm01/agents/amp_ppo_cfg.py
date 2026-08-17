@@ -59,12 +59,13 @@ class PM01FlatAMPPPORunnerCfg_V1(PM01BasePPORunnerCfg):
     # AMP parameters
     style_reward_scale: float = 2.0 #10.0
     task_style_lerp: float = 0.3
-    frame_length: int = 51
-    frame_dim: int = 67
-    condition_dim: int = 3
+    frame_length: int = 10
+    frame_dim: int = 49
+    amp_obs_group: str = "disc"
+    flatten_history_dim: bool = False
     include_joint_vel: bool = True
-    include_foot_features: bool = True
-    amp_condition_group: str = "amp_command"
+    include_base_lin_vel: bool = False
+    include_projected_gravity: bool = False
     frame_normalization: bool = True
     discriminator_hidden_dims: list[int] = [512, 256, 128]
     experiment_name: str = "amp_velocity_flat_pm01"

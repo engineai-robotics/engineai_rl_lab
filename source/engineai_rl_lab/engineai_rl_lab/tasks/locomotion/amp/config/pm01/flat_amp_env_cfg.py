@@ -18,7 +18,6 @@ from isaaclab.terrains import TerrainImporterCfg
 ##
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
-from isaaclab.utils.math import quat_apply_inverse
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from engineai_rl_lab.tasks.locomotion.amp import mdp
@@ -29,66 +28,32 @@ from engineai_rl_lab.tasks.locomotion.amp.mdp.noise import Unoise as MyNiose
 AMP_FOOT_BODY_NAMES = ["LINK_ANKLE_ROLL_L", "LINK_ANKLE_ROLL_R"]
 
 
-def dummy_history_term(env):
-    # zero-out waist joint observations to avoid AMP mismatch between robot variants
+def _discriminator_joint_state(env, state_name: str) -> torch.Tensor:
+    """Return a PM01 joint state aligned with the headless expert data."""
     robot = env.scene["robot"]
-    joint_pos = mdp.joint_pos(env).clone()
-    joint_vel = mdp.joint_vel(env).clone()
-    waist_joint_ids = robot.find_joints(
-        ".*WAIST_YAW.*", preserve_order=True)[0]
+    joint_state = getattr(mdp, state_name)(env).clone()
+    waist_joint_ids = robot.find_joints(".*WAIST_YAW.*", preserve_order=True)[0]
     if len(waist_joint_ids) > 0:
-        waist_joint_ids = torch.as_tensor(
-            waist_joint_ids, device=joint_pos.device)
-        joint_pos[:, waist_joint_ids] = 0.0
-        joint_vel[:, waist_joint_ids] = 0.0
-    head_joint_ids = [i for i, name in enumerate(
-        robot.joint_names) if name == "J23_HEAD_YAW"]
+        waist_joint_ids = torch.as_tensor(waist_joint_ids, device=joint_state.device)
+        joint_state[:, waist_joint_ids] = 0.0
+    head_joint_ids = [i for i, name in enumerate(robot.joint_names) if name == "J23_HEAD_YAW"]
     if len(head_joint_ids) > 0:
         keep_joint_mask = torch.ones(
-            joint_pos.shape[1], dtype=torch.bool, device=joint_pos.device)
-        keep_joint_mask[torch.as_tensor(
-            head_joint_ids, device=joint_pos.device)] = False
-        joint_pos = joint_pos[:, keep_joint_mask]
-        joint_vel = joint_vel[:, keep_joint_mask]
-    lin_vel = mdp.robot_base_lin_vel_b(env)
-    ang_vel = mdp.robot_base_ang_vel_b(env)
-    projected_gravity = mdp.projected_gravity(env)
-
-    foot_body_ids = getattr(env, "_pm01_amp_foot_body_ids", None)
-    if foot_body_ids is None:
-        foot_body_ids = torch.as_tensor(
-            robot.find_bodies(AMP_FOOT_BODY_NAMES, preserve_order=True)[0],
-            device=joint_pos.device,
-            dtype=torch.long,
+            joint_state.shape[1],
+            dtype=torch.bool,
+            device=joint_state.device,
         )
-        env._pm01_amp_foot_body_ids = foot_body_ids
+        keep_joint_mask[torch.as_tensor(head_joint_ids, device=joint_state.device)] = False
+        joint_state = joint_state[:, keep_joint_mask]
+    return joint_state
 
-    foot_pos_w = robot.data.body_pos_w[:, foot_body_ids, :]
-    foot_vel_w = robot.data.body_lin_vel_w[:, foot_body_ids, :]
-    num_feet = foot_body_ids.numel()
-    base_quat_w = robot.data.root_quat_w.unsqueeze(1).expand(-1, num_feet, -1).reshape(-1, 4)
-    foot_pos_b = quat_apply_inverse(
-        base_quat_w,
-        (foot_pos_w - robot.data.root_pos_w.unsqueeze(1)).reshape(-1, 3),
-    ).reshape(joint_pos.shape[0], num_feet * 3)
-    foot_vel_b = quat_apply_inverse(
-        base_quat_w,
-        foot_vel_w.reshape(-1, 3),
-    ).reshape(joint_pos.shape[0], num_feet * 3)
 
-    # feature order must match gather_frame_features in AMP_data_loader.py
-    return torch.cat(
-        [
-            joint_pos * 9,
-            joint_vel,
-            lin_vel * 7,
-            ang_vel,
-            projected_gravity,
-            foot_pos_b,
-            foot_vel_b,
-        ],
-        dim=-1,
-    )
+def discriminator_joint_pos(env) -> torch.Tensor:
+    return _discriminator_joint_state(env, "joint_pos")
+
+
+def discriminator_joint_vel(env) -> torch.Tensor:
+    return _discriminator_joint_state(env, "joint_vel")
 
 
 ACTUATOR_DELAY_RANGE = (2, 8)
@@ -408,27 +373,22 @@ class PM01ObservationsCfg:
             self.concatenate_terms = True
 
     @configclass
-    class AMPCfg(ObsGroup):
-        history = ObsTerm(func=dummy_history_term)
+    class DiscriminatorCfg(ObsGroup):
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
+        joint_pos = ObsTerm(func=discriminator_joint_pos)
+        joint_vel = ObsTerm(func=discriminator_joint_vel)
 
         def __post_init__(self):
-            self.history_length = 51
-
-    @configclass
-    class AMPCommandCfg(ObsGroup):
-        command = ObsTerm(
-            func=mdp.generated_commands,
-            params={"command_name": "base_velocity"},
-        )
-
-        def __post_init__(self):
+            self.enable_corruption = False
             self.concatenate_terms = True
+            self.concatenate_dim = -1
+            self.history_length = 10
+            self.flatten_history_dim = False
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
     critic: CriticCfg = CriticCfg()
-    amp: AMPCfg = AMPCfg()
-    amp_command: AMPCommandCfg = AMPCommandCfg()
+    disc: DiscriminatorCfg = DiscriminatorCfg()
 
 
 @configclass

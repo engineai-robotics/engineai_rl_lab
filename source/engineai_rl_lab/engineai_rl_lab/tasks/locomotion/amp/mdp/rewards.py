@@ -153,6 +153,8 @@ def feet_air_time_positive_biped_pure_yaw(
     """Reward high, sustained steps that make progress on a pure-yaw command."""
     if threshold <= 0.0:
         raise ValueError("threshold must be greater than zero.")
+    if target_clearance <= 0.0:
+        raise ValueError("target_clearance must be greater than zero.")
     if clearance_std <= 0.0:
         raise ValueError("clearance_std must be greater than zero.")
 
@@ -171,14 +173,18 @@ def feet_air_time_positive_biped_pure_yaw(
 
     asset = env.scene[asset_cfg.name]
     foot_height = asset.data.body_pos_w[:, asset_cfg.body_ids, 2]
-    support_height = torch.sum(foot_height * in_contact, dim=1) / torch.sum(
-        in_contact.float(), dim=1
-    ).clamp_min(1.0)
-    swing_height = torch.sum(
-        (foot_height - support_height.unsqueeze(1)) * (~in_contact),
-        dim=1,
+    clearance = torch.max(foot_height, dim=1).values - torch.min(foot_height, dim=1).values
+    clearance_progress = torch.clamp(
+        clearance / target_clearance,
+        min=0.0,
+        max=1.0,
     )
-    clearance_reward = torch.exp(-torch.square((swing_height - target_clearance) / clearance_std))
+    clearance_target_reward = torch.exp(
+        -torch.square((clearance - target_clearance) / clearance_std)
+    )
+    # Progress makes the signal dense before the policy discovers single
+    # support; the target kernel retains a clear optimum around 14 cm.
+    clearance_reward = 0.7 * clearance_progress + 0.3 * clearance_target_reward
 
     command = env.command_manager.get_command(command_name)
     pure_yaw_command = (
@@ -194,9 +200,9 @@ def feet_air_time_positive_biped_pure_yaw(
         max=1.0,
     )
 
-    reward = 0.5 * air_time_reward + 0.5 * clearance_reward
-    progress_scale = 0.25 + 0.75 * yaw_progress_ratio
-    return reward * progress_scale * single_stance * pure_yaw_command
+    reward = 0.35 * air_time_reward * single_stance + 0.65 * clearance_reward
+    progress_scale = 0.4 + 0.6 * yaw_progress_ratio
+    return reward * progress_scale * pure_yaw_command
 
 
 # T800

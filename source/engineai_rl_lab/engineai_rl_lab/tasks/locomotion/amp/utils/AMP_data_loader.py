@@ -159,12 +159,17 @@ class AMPDataLoader:
         device: str = "cpu",
         history_length: int = 5,
         include_joint_vel: bool = False,
+        include_base_lin_vel: bool = True,
+        include_projected_gravity: bool = True,
         include_foot_features: bool = False,
+        flatten_history_dim: bool = True,
         condition_dim: int = 0,
     ):
         assert history_length >= 1, "history_length must be positive"
         if condition_dim not in (0, 3):
             raise ValueError(f"condition_dim must be 0 or 3, got {condition_dim}.")
+        if condition_dim > 0 and not flatten_history_dim:
+            raise ValueError("Conditional AMP currently requires flatten_history_dim=True.")
 
         motion_specs: list[tuple[str, float, tuple[float, float, float] | None]] = []
         foot_body_indices: list[int] | None = None
@@ -199,7 +204,7 @@ class AMPDataLoader:
         if condition_dim > 0 and any(command is None for _, _, command in motion_specs):
             raise ValueError("Every motion requires a [vx, vy, wz] command label for conditional AMP.")
         if include_foot_features and foot_body_indices is None:
-            raise ValueError("Conditional foot features require foot_body_indices in the motion YAML.")
+            raise ValueError("Foot features require foot_body_indices in the motion YAML.")
         print("\n=========== AMP Motion File List ===========")
         for idx, (path, weight, command) in enumerate(motion_specs):
             print(f"{idx + 1:2d}. weight={weight:g} command={command}  {path}")
@@ -328,7 +333,10 @@ class AMPDataLoader:
         self.num_bodies = self.body_pos_w.shape[1]
         self.history_length = history_length
         self.include_joint_vel = include_joint_vel
+        self.include_base_lin_vel = include_base_lin_vel
+        self.include_projected_gravity = include_projected_gravity
         self.include_foot_features = include_foot_features
+        self.flatten_history_dim = flatten_history_dim
         self.condition_dim = condition_dim
         self.foot_body_indices = (
             torch.tensor(foot_body_indices, dtype=torch.long, device=device)
@@ -372,16 +380,13 @@ class AMPDataLoader:
 
     def _gather_frame_features(self, idxs: torch.Tensor) -> list[torch.Tensor]:
         """Collect one physical AMP frame in the same order as the environment."""
-        features = [self.joint_pos[idxs] * 9]
+        features = [self.base_ang_vel_b[idxs], self.joint_pos[idxs]]
         if self.include_joint_vel:
             features.append(self.joint_vel[idxs])
-        features.extend(
-            [
-                self.base_lin_vel_b[idxs] * 7,
-                self.base_ang_vel_b[idxs],
-                self.projected_gravity_b[idxs],
-            ]
-        )
+        if self.include_base_lin_vel:
+            features.append(self.base_lin_vel_b[idxs])
+        if self.include_projected_gravity:
+            features.append(self.projected_gravity_b[idxs])
         if self.include_foot_features:
             features.extend(
                 [
@@ -399,11 +404,14 @@ class AMPDataLoader:
             device=self.joint_pos.device,
         )
         motion_starts = self.frame_motion_start[batch_indices]
-        frame_features = []
+        history = []
         for offset in history_offsets:
             idxs = torch.maximum(batch_indices + offset, motion_starts)
-            frame_features.extend(self._gather_frame_features(idxs))
-        return torch.cat(frame_features, dim=-1)
+            history.append(torch.cat(self._gather_frame_features(idxs), dim=-1))
+        history = torch.stack(history, dim=1)
+        if self.flatten_history_dim:
+            return history.flatten(start_dim=1)
+        return history
 
     def condition_support_mask(self, commands: torch.Tensor) -> torch.Tensor:
         """Exclude standing commands until the dataset contains a standing expert clip."""

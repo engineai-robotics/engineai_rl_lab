@@ -176,7 +176,11 @@ class AMPPPOV2(PPO):
             prob = torch.sigmoid(disc_score)
             return -torch.log(torch.clamp(1.0 - prob, min=1e-6))
         if self.loss_type == AMPLossType.LSGAN:
-            return torch.clamp(1.0 - 0.25 * torch.square(disc_score - 1.0), min=0.0)
+            # The clipped quadratic becomes exactly zero when a strong
+            # discriminator drives policy scores to -1, eliminating the style
+            # learning signal. An exponential kernel preserves the same
+            # optimum at +1 while retaining a useful gradient everywhere.
+            return torch.exp(-0.25 * torch.square(disc_score - 1.0))
         # WGAN: reward is the (normalized) raw score.
         normed = self.disc_output_normalizer(disc_score.unsqueeze(-1))
         return normed.squeeze(-1)
@@ -503,7 +507,7 @@ class AMPPPOV2(PPO):
         """Build the discriminator + data loader and inject AMP parameters, then defer to PPO."""
         alg_cfg = cfg["algorithm"]
 
-        # Discriminator (engineai flat discriminator, 2D input).
+        # Discriminator accepts either flattened or [history, feature] observations.
         alg_cfg["discriminator"] = Discriminator(
             input_dim_per_frame=cfg["frame_dim"],
             input_history_length=cfg["frame_length"],
@@ -518,7 +522,10 @@ class AMPPPOV2(PPO):
             cfg["dataset_path"],
             history_length=cfg["frame_length"],
             include_joint_vel=cfg.get("include_joint_vel", False),
+            include_base_lin_vel=cfg.get("include_base_lin_vel", True),
+            include_projected_gravity=cfg.get("include_projected_gravity", True),
             include_foot_features=cfg.get("include_foot_features", False),
+            flatten_history_dim=cfg.get("flatten_history_dim", True),
             condition_dim=cfg.get("condition_dim", 0),
             device=device,
         )

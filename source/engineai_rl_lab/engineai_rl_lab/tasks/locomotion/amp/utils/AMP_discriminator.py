@@ -46,7 +46,20 @@ class Discriminator(nn.Module):
             self.feature_norm = EmpiricalNormalization(shape=(self.frame_size,)).to(self.device)
 
     def normalize_input(self, x):
-        if self.feature_normalization:
+        if not self.feature_normalization:
+            return x
+        if x.ndim == 3:
+            batch_size, history_length, frame_size = x.shape
+            if history_length != self.history_length or frame_size != self.frame_size:
+                raise ValueError(
+                    f"Expected [N, {self.history_length}, {self.frame_size}], got {tuple(x.shape)}."
+                )
+            return self.feature_norm(x.reshape(-1, frame_size)).reshape(
+                batch_size,
+                history_length,
+                frame_size,
+            )
+        if x.ndim == 2:
             feature_end = self.history_length * self.frame_size
             feature_input = x[:, :feature_end]
             condition = x[:, feature_end:]
@@ -54,19 +67,36 @@ class Discriminator(nn.Module):
             # command condition in its original velocity units.
             frames = torch.split(feature_input, self.frame_size, dim=1)
             norm_frames = [self.feature_norm(frame) for frame in frames]
-            x = torch.cat([*norm_frames, condition], dim=1)
-        return x
+            return torch.cat([*norm_frames, condition], dim=1)
+        raise ValueError(f"Discriminator input must be 2D or 3D, got {x.ndim}D.")
 
     def forward(self, x):
-        expected_size = self.history_length * self.frame_size + self.condition_dim
-        assert expected_size == x.shape[1], \
-            f"Input feature dimension {x.shape[1]} does not match expected size {expected_size}"
+        if x.ndim == 3:
+            if self.condition_dim != 0:
+                raise ValueError("A 3D discriminator input cannot contain a separate condition.")
+            expected_shape = (self.history_length, self.frame_size)
+            if tuple(x.shape[1:]) != expected_shape:
+                raise ValueError(
+                    f"Expected discriminator history shape {expected_shape}, got {tuple(x.shape[1:])}."
+                )
+        elif x.ndim == 2:
+            expected_size = self.history_length * self.frame_size + self.condition_dim
+            if expected_size != x.shape[1]:
+                raise ValueError(
+                    f"Input feature dimension {x.shape[1]} does not match expected size {expected_size}."
+                )
+        else:
+            raise ValueError(f"Discriminator input must be 2D or 3D, got {x.ndim}D.")
         if self.feature_normalization:
             x = self.normalize_input(x)
+        x = x.flatten(start_dim=1)
         return self.linear_layer(self.model(x)).squeeze(-1)
 
     def update_normalization(self, x):
         if self.feature_normalization:
+            if x.ndim == 3:
+                self.feature_norm.update(x.reshape(-1, self.frame_size))
+                return
             for i in range(self.history_length):
                 start_idx = i * self.frame_size
                 end_idx = (i + 1) * self.frame_size
@@ -81,6 +111,21 @@ class Discriminator(nn.Module):
         return r
 
     def compute_grad_pen(self, expert_data, lambda_=10):
+        if expert_data.ndim == 3:
+            physical_features = expert_data.detach().requires_grad_(True)
+            disc = self.forward(physical_features)
+            ones = torch.ones(disc.size(), device=disc.device)
+            grad = torch.autograd.grad(
+                outputs=disc,
+                inputs=physical_features,
+                grad_outputs=ones,
+                create_graph=True,
+                retain_graph=True,
+                only_inputs=True,
+            )[0]
+            grad_norm = grad.flatten(start_dim=1).norm(2, dim=1)
+            return lambda_ * grad_norm.pow(2).mean()
+
         feature_end = self.history_length * self.frame_size
         physical_features = expert_data[:, :feature_end].detach().requires_grad_(True)
         condition = expert_data[:, feature_end:].detach()
@@ -93,6 +138,6 @@ class Discriminator(nn.Module):
             retain_graph=True, only_inputs=True)[0]
 
         # Enforce that the grad norm approaches 0.
-        grad_pen = lambda_ * (grad.norm(2, dim=1) - 0).pow(2).mean()
+        grad_pen = lambda_ * grad.norm(2, dim=1).pow(2).mean()
         return grad_pen
     
