@@ -1,0 +1,16 @@
+motions:
+  - file: ../data/walk_001_Skeleton9.npz
+    weight: 1.0
+  - file: ../data/walk_left_slow_001_Skeleton9.npz
+    weight: 1.0
+  - file: ../data/walk_right_slow_002_Skeleton9.npz
+    weight: 1.0
+  - file: ../data/walk_straight_slow_001_Skeleton9.npz
+    weight: 1.0
+
+# Input dof_pos is ordered J00..J22 followed by one head joint. Reorder the
+# 23 AMP joints to match the PM01 articulation/discriminator joint layout.
+dof_indices: [0, 6, 12, 1, 7, 13, 18, 2, 8, 14, 19, 3, 9, 15, 20, 4, 10, 16, 21, 5, 11, 17, 22]
+
+# The online discriminator zeroes waist yaw, so the expert frame must do the same.
+zero_dof_indices: [2]
