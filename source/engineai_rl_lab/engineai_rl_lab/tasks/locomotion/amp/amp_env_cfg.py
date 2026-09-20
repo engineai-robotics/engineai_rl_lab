@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
+import isaaclab.terrains as terrain_gen
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -65,14 +66,37 @@ HIP_JOINT_NAMES = [".*_HIP_YAW_.*", ".*_HIP_ROLL_.*"]
 ARM_JOINT_NAMES = [".*_SHOULDER_.*", ".*_ELBOW_.*"]
 WAIST_JOINT_NAMES = [".*(WAIST|TORSO)_YAW.*"]
 
+# Flat ground with ±2 cm random undulations. Shared by every AMP robot.
+AMP_FLAT_ROUGH_TERRAINS_CFG = terrain_gen.TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    curriculum=False,
+    sub_terrains={
+        "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+            proportion=1.0,
+            noise_range=(-0.02, 0.02),
+            noise_step=0.005,
+            downsampled_scale=0.2,
+            border_width=0.25,
+        ),
+    },
+)
+
 
 @configclass
 class AmpSceneCfg(InteractiveSceneCfg):
-    """Flat terrain scene shared by the AMP locomotion environments."""
+    """AMP scene: flat ground with ±2 cm undulations, shared by every robot."""
 
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
-        terrain_type="plane",
+        terrain_type="generator",
+        terrain_generator=AMP_FLAT_ROUGH_TERRAINS_CFG,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -408,7 +432,7 @@ class AmpTerminationsCfg:
 
 @configclass
 class LocomotionAmpEnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the AMP locomotion environment on flat terrain."""
+    """Configuration for the AMP locomotion environment on ±2 cm undulating flat terrain."""
 
     scene: AmpSceneCfg = AmpSceneCfg(num_envs=4096, env_spacing=2.5)
     observations: AmpObservationsCfg = AmpObservationsCfg()

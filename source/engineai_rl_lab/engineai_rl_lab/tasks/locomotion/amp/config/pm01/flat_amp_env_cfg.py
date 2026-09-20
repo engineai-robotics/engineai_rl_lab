@@ -68,6 +68,10 @@ class PM01AMPFlatEnvCfg(LocomotionAmpEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
+        # PM01 trains on a plain ground plane rather than the generated rough terrain
+        # configured by the shared AMP environment.
+        self.scene.terrain.terrain_type = "plane"
+        self.scene.terrain.terrain_generator = None
         self.scene.robot = PM01_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot",
             actuators=build_delayed_actuators(PM01_CFG.actuators, *ACTUATOR_DELAY_RANGE),

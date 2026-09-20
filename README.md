@@ -15,6 +15,7 @@
 |**T800**|<img src="./docs/train.gif" height="180"/>|<img src="./docs/sim2sim.gif" height="180"/>|<img src="./docs/deploy.gif" height="180"/>|
 |**PM01**|<img src="./docs/train_pm.gif" height="180"/>|<img src="./docs/sim2sim_pm.gif" height="180"/>|<img src="./docs/deploy_pm.gif" height="180"/>|
 |||**amp**|||
+|**T800**|<img src="./docs/amp-t800-train.gif" height="180"/>|<img src="./docs/amp-t800-mujoco.gif" height="180"/>|<img src="./docs/amp-t800-deploy.gif" height="180"/>|
 |**PM01**|<img src="./docs/amp-pm-train.gif" height="180"/>|<img src="./docs/amp-pm-mujoco.gif" height="180"/>|<img src="./docs/amp-pm-deploy.gif" height="180"/>|
 
 ## 安装
@@ -49,15 +50,15 @@ pip install mnn
 ```bash
 # csv文件转换为npz文件,npz文件在同一目录下
 # PM01
-python scripts/tracking/csv_to_npz.py --robot pm01 --input_fps 30 -f datasets/tracking/pm01/dance.csv
+python scripts/csv_to_npz.py --robot pm01 --input_fps 30 -f datasets/tracking/pm01/dance.csv
 # T800
-python scripts/tracking/csv_to_npz.py --robot t800 --input_fps 30 -f datasets/tracking/t800/dance_t800.csv
+python scripts/csv_to_npz.py --robot t800 --input_fps 30 -f datasets/tracking/t800/dance_t800.csv
 
 # 重放npz文件
 # PMm01
-python scripts/tracking/replay_npz.py --robot pm01 --input_file datasets/tracking/pm01/dance.npz
+python scripts/replay_npz.py --robot pm01 --input_file datasets/tracking/pm01/dance.npz
 # T800
-python scripts/tracking/replay_npz.py --robot t800 --input_file datasets/tracking/t800/dance_t800.npz
+python scripts/replay_npz.py --robot t800 --input_file datasets/tracking/t800/dance_t800.npz
 ```
 
 2. 训练
@@ -159,6 +160,7 @@ LB+X进入amp行走测试，RB+X进入whole body tracking测试
 > 进入mujoco后机器人会自动倒地，此时应切换到pd stand模式使机器人关节恢复到初始位置(仅仿真环境可以这样操作),按下键盘中的Enter即可重置mujoco环境，使机器人处于站立状态，这时可进入dance模式。机器人执行完动作之后自动会切换到walk状态。
 
 ### Sim2Real
+#### whole body tracking
 1. 编辑[engineai_robotics_native_sdk](https://github.com/engineai-robotics/engineai_robotics_native_sdk)中的`install.sh` 中的要部署目标机器人参数：
 ```bash
 remote_user="user"

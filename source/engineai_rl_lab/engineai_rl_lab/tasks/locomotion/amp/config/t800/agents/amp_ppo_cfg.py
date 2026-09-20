@@ -1,4 +1,5 @@
 from isaaclab.utils import configclass
+from isaaclab_rl.rsl_rl import RslRlSymmetryCfg
 
 from engineai_rl_lab.tasks.locomotion.amp.agents import AmpBasePpoRunnerCfg, RslRlAmpCfg
 
@@ -8,6 +9,15 @@ class T800FlatAMPPPORunnerCfg(AmpBasePpoRunnerCfg):
     experiment_name = "amp_velocity_flat_t800"
     max_iterations = 20000
     save_interval = 2000
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.algorithm.symmetry_cfg = RslRlSymmetryCfg(
+            use_data_augmentation=False,
+            use_mirror_loss=True,
+            data_augmentation_func="engineai_rl_lab.tasks.locomotion.amp.mdp.symmetry:compute_t800_symmetry",
+            mirror_loss_coeff=0.1,
+        )
 
     amp = RslRlAmpCfg(
         dataset_path="datasets/amp/t800/config/dataset.yaml",
