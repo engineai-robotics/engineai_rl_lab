@@ -4,7 +4,6 @@
 
     python scripts/csv_to_npz.py --robot pm01 --input_fps 30 -f <path_to_input.csv> 
     python scripts/csv_to_npz.py --robot t800 --input_fps 30 -f <path_to_input.csv> 
-    python scripts/csv_to_npz.py --robot t800pro --input_fps 30 -f <path_to_input.csv> 
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -22,7 +21,7 @@ parser.add_argument(
     "--robot",
     type=str,
     default="pm01",
-    choices=["pm01", "t800", "t800pro"],
+    choices=["pm01", "t800"],
     help="The robot configuration to use.",
 )
 parser.add_argument("--input_file", "-f", type=str, required=True, help="The path to the input motion csv file.")
@@ -70,12 +69,10 @@ from isaaclab.utils.math import axis_angle_from_quat, quat_conjugate, quat_mul, 
 ##
 from engineai_rl_lab.tasks.tracking.robots.pm01 import PM01_CYLINDER_CFG
 from engineai_rl_lab.tasks.tracking.robots.t800 import T800_CYLINDER_CFG
-from engineai_rl_lab.tasks.tracking.robots.t800pro import T800pro_CYLINDER_CFG
 
 ROBOT_CFGS = {
     "pm01": PM01_CYLINDER_CFG,
     "t800": T800_CYLINDER_CFG,
-    "t800pro": T800pro_CYLINDER_CFG,
 }
 
 

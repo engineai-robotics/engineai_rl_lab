@@ -1,0 +1,95 @@
+seed: 42
+device: cuda:0
+num_steps_per_env: 24
+max_iterations: 20000
+empirical_normalization: {}
+obs_groups:
+  actor:
+  - policy
+  critic:
+  - critic
+clip_actions: null
+check_for_nan: true
+save_interval: 2000
+experiment_name: amp_velocity_flat_t800
+run_name: ''
+logger: tensorboard
+neptune_project: isaaclab
+wandb_project: isaaclab
+resume: false
+load_run: .*
+load_checkpoint: model_.*.pt
+class_name: OnPolicyRunner
+actor:
+  class_name: MLPModel
+  hidden_dims:
+  - 512
+  - 256
+  - 128
+  activation: elu
+  obs_normalization: true
+  distribution_cfg:
+    class_name: GaussianDistribution
+    init_std: 1.0
+    std_type: scalar
+critic:
+  class_name: MLPModel
+  hidden_dims:
+  - 512
+  - 256
+  - 128
+  activation: elu
+  obs_normalization: true
+  distribution_cfg: null
+algorithm:
+  class_name: engineai_rl_lab.tasks.locomotion.amp.algorithms.amp:AMP
+  num_learning_epochs: 5
+  num_mini_batches: 4
+  learning_rate: 0.001
+  schedule: adaptive
+  gamma: 0.99
+  lam: 0.95
+  entropy_coef: 0.01
+  desired_kl: 0.01
+  max_grad_norm: 1.0
+  optimizer: adam
+  value_loss_coef: 1.0
+  use_clipped_value_loss: true
+  clip_param: 0.2
+  normalize_advantage_per_mini_batch: false
+  share_cnn_encoders: false
+  rnd_cfg: null
+  symmetry_cfg: null
+policy: {}
+amp:
+  dataset_path: datasets/amp/t800/config/dataset.yaml
+  include_joint_vel: true
+  include_base_lin_vel: false
+  include_projected_gravity: true
+  include_foot_features: false
+  amp_obs_group: disc
+  frame_length: 10
+  frame_dim: 52
+  flatten_history_dim: false
+  frame_normalization: true
+  frame_normalization_clip: 10.0
+  discriminator_hidden_dims:
+  - 512
+  - 256
+  - 128
+  style_reward_scale: 7.5
+  task_style_lerp: 0.4
+  step_dt: null
+  loss_type: LSGAN
+  grad_penalty_scale: 10.0
+  disc_logit_reg: 0.01
+  disc_learning_rate: 0.00025
+  disc_weight_decay: 0.0001
+  disc_max_grad_norm: 1.0
+  disc_epochs: 2
+  disc_batch_size: 2.0
+  disc_update_interval: 2
+  disc_replay_buffer_size: 200000
+  disc_replay_samples: 4096
+  condition_dim: 0
+  amp_condition_group: amp_command

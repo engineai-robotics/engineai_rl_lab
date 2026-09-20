@@ -1,0 +1,102 @@
+--- git commit ---
+38688c3f9d4d7bb8f8f4c9b446d5f997c40fd6aa
+
+
+--- git status ---
+On branch amp
+Your branch is up to date with 'origin/amp'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_base.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_physics.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_robot.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_sensor.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/pm01/serial_pm01_edu.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_base.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_physics.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_robot.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_sensor.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/assets/t800/serial_t800.usd
+	modified:   source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/pm01/flat_amp_env_cfg.py
+	modified:   source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/t800/flat_amp_env_cfg.py
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_base.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_base.usd
+index 725bf5b..239b84e 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_base.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_base.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_physics.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_physics.usd
+index 27fdd59..52ea889 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_physics.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_physics.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_robot.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_robot.usd
+index f338f7e..4a2d5ed 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_robot.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_robot.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_sensor.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_sensor.usd
+index 0c2ee57..65714e4 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_sensor.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/configuration/serial_pm01_edu_sensor.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/serial_pm01_edu.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/serial_pm01_edu.usd
+index 0e6f706..7474b78 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/serial_pm01_edu.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/pm01/serial_pm01_edu.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_base.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_base.usd
+index 1fdc25c..8b6f829 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_base.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_base.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_physics.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_physics.usd
+index 4bad2a9..3646b90 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_physics.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_physics.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_robot.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_robot.usd
+index 2f7ed18..7160741 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_robot.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_robot.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_sensor.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_sensor.usd
+index 463651d..4bd7990 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_sensor.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/configuration/serial_t800_sensor.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/serial_t800.usd b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/serial_t800.usd
+index 5389ea5..0dafb39 100644
+Binary files a/source/engineai_rl_lab/engineai_rl_lab/assets/t800/serial_t800.usd and b/source/engineai_rl_lab/engineai_rl_lab/assets/t800/serial_t800.usd differ
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/pm01/flat_amp_env_cfg.py b/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/pm01/flat_amp_env_cfg.py
+index e0ea139..96b5943 100644
+--- a/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/pm01/flat_amp_env_cfg.py
++++ b/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/pm01/flat_amp_env_cfg.py
+@@ -82,7 +82,7 @@ class PM01AMPFlatEnvCfg(LocomotionAmpEnvCfg):
+         # ------------------------------------------------------
+         self.commands.base_velocity.rel_standing_envs = 0.1
+         # Active reference frames: vx P05/P95 ~= 0.29/0.59 m/s and |wz| P95 ~= 0.57 rad/s.
+-        self.commands.base_velocity.ranges.lin_vel_x = (0.3, 0.6)
++        self.commands.base_velocity.ranges.lin_vel_x = (0.5, 0.8)
+         self.commands.base_velocity.ranges.ang_vel_z = (-0.6, 0.6)
+ 
+         # ------------------------------------------------------
+@@ -98,7 +98,7 @@ class PM01AMPFlatEnvCfg(LocomotionAmpEnvCfg):
+         self.rewards.dof_torques_l2.weight = -1.0e-6
+         self.rewards.dof_acc_l2.weight = -1.0e-8
+         self.rewards.action_rate_l2.weight = -0.01
+-        self.rewards.action_smoothness.weight = -0.01
++        self.rewards.action_smoothness.weight = -0.0001
+         self.rewards.dof_pos_limits.weight = -0.1
+         self.rewards.joint_deviation_hip.weight = -0.01
+         self.rewards.joint_deviation_arms.weight = -0.01
+diff --git a/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/t800/flat_amp_env_cfg.py b/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/t800/flat_amp_env_cfg.py
+index 3fecd30..8070e54 100644
+--- a/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/t800/flat_amp_env_cfg.py
++++ b/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/amp/config/t800/flat_amp_env_cfg.py
+@@ -64,7 +64,7 @@ class T800AMPFlatEnvCfg(LocomotionAmpEnvCfg):
+         # ------------------------------------------------------
+         self.commands.base_velocity.rel_standing_envs = 0.1
+         # Active reference frames: vx P05/P95 ~= 0.30/0.65 m/s and |wz| P95 ~= 0.57 rad/s.
+-        self.commands.base_velocity.ranges.lin_vel_x = (0.3, 0.65)
++        self.commands.base_velocity.ranges.lin_vel_x = (0.5, 0.8)
+         self.commands.base_velocity.ranges.ang_vel_z = (-0.6, 0.6)
+ 
+         # ------------------------------------------------------
+@@ -80,7 +80,7 @@ class T800AMPFlatEnvCfg(LocomotionAmpEnvCfg):
+         self.rewards.dof_torques_l2.weight = -1.0e-6
+         self.rewards.dof_acc_l2.weight = -1.0e-8
+         self.rewards.action_rate_l2.weight = -0.01
+-        self.rewards.action_smoothness.weight = -0.01
++        self.rewards.action_smoothness.weight = -0.0001
+         self.rewards.dof_pos_limits.weight = -1.0
+         self.rewards.joint_deviation_hip.weight = -0.05
+         self.rewards.joint_deviation_arms.weight = -0.05

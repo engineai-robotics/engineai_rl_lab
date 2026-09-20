@@ -5,7 +5,6 @@
     # Usage
     python scripts/replay_npz.py --robot pm01 --input_file <path_to_motion.npz>
     python scripts/replay_npz.py --robot t800 --input_file <path_to_motion.npz>
-    python scripts/replay_npz.py --robot t800pro --input_file <path_to_motion.npz>
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -21,7 +20,7 @@ parser = argparse.ArgumentParser(description="Replay converted motions.")
 parser.add_argument("--registry_name", type=str, default=None, help="The name of the wandb registry.")
 parser.add_argument("--input_file", type=str, default=None, help="Path to a local .npz motion file.")
 parser.add_argument(
-    "--robot", type=str, default="pm01", choices=["pm01", "t800", "t800pro"], help="Robot type to use."
+    "--robot", type=str, default="pm01", choices=["pm01", "t800"], help="Robot type to use."
 )
 
 # append AppLauncher cli args
@@ -47,13 +46,11 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 ##
 from engineai_rl_lab.tasks.tracking.robots.pm01 import PM01_CYLINDER_CFG
 from engineai_rl_lab.tasks.tracking.robots.t800 import T800_CYLINDER_CFG
-from engineai_rl_lab.tasks.tracking.robots.t800pro import T800pro_CYLINDER_CFG
 from engineai_rl_lab.tasks.tracking.mdp.commands import MotionLoader
 
 ROBOT_CFGS = {
     "pm01": PM01_CYLINDER_CFG,
     "t800": T800_CYLINDER_CFG,
-    "t800pro": T800pro_CYLINDER_CFG,
 }
 
 
