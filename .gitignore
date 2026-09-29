@@ -89,3 +89,6 @@ source/engineai_rl_lab/engineai_rl_lab/assets/t800
 source/engineai_rl_lab/engineai_rl_lab/assets/pm01
 logs/rsl_rl/amp_velocity_flat_pm01
 source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/velocity
+
+# Local walking tasks
+/source/engineai_rl_lab/engineai_rl_lab/tasks/locomotion/rl_walking/
